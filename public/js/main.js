@@ -546,11 +546,11 @@ function goTalk(vid) {
   goAct(vx, vy, { type: 'talk', vid });
 }
 
-function doAct(tx, ty, act) {
-  if (act.type === 'talk') {
-    const v = world.villagers[act.vid];
+function doAct(tx, ty, what) {
+  if (what.type === 'talk') {
+    const v = world.villagers[what.vid];
     face(v.x - me.x, v.y - me.y);
-    openTalk(act.vid);
+    openTalk(what.vid);
     return;
   }
   const t = performance.now();
@@ -558,7 +558,7 @@ function doAct(tx, ty, act) {
   me.nextAct = t + ACT_COOLDOWN;
   face(tx + 0.5 - me.x, ty + 0.5 - me.y);
   me.swing = Date.now() + 200;
-  act({ ...act, x: tx, y: ty, by: me.id });
+  act({ ...what, x: tx, y: ty, by: me.id });
 }
 
 // Walk next to a tile, then do something to it.
