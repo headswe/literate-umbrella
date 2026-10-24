@@ -1,14 +1,14 @@
 // Boot, game loop, input and HUD.
 import { ITEMS, ITEM_ORDER, NATURE, AVATARS, ISLAND_NAMES } from './data.js';
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep } from './sim.js';
-import { Renderer, project, TW, TH } from './render.js';
+import { Renderer3D } from './render3d.js';
 import { findPath } from './path.js';
 import { sfx, unlockAudio, setMuted, isMuted } from './audio.js';
 import * as store from './storage.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
-const renderer = new Renderer(canvas);
+const renderer = new Renderer3D(canvas, $('overlay'));
 
 const SPEED = 3.6; // tiles per second
 const ACT_COOLDOWN = 300;
@@ -22,9 +22,10 @@ let marker = null;
 let hintShown = true;
 
 const profile = store.loadProfile();
+const kindOf = (a) => (AVATARS.find((v) => v.id === a || v.icon === a) || AVATARS[0]).id;
 const me = {
-  x: 0, y: 0, z: 1, avatar: profile.avatar || '🦄', name: profile.name || '',
-  facing: 1, moving: false, path: null, action: null, swing: 0, nextAct: 0,
+  id: 'me', x: 0, y: 0, z: 1, kind: kindOf(profile.avatar), name: profile.name || '',
+  angle: 0, moving: false, path: null, action: null, swing: 0, nextAct: 0,
 };
 
 // ---------------------------------------------------------------- title screen
@@ -34,9 +35,10 @@ function renderTitle() {
   for (const a of AVATARS) {
     const b = document.createElement('button');
     b.className = 'avatar';
-    b.textContent = a;
-    b.setAttribute('aria-pressed', String(a === me.avatar));
-    b.onclick = () => { me.avatar = a; saveProfile(); renderTitle(); sfx.pop(); };
+    b.textContent = a.icon;
+    b.setAttribute('aria-label', a.name);
+    b.setAttribute('aria-pressed', String(a.id === me.kind));
+    b.onclick = () => { me.kind = a.id; saveProfile(); renderTitle(); sfx.pop(); };
     av.appendChild(b);
   }
   $('playerName').value = me.name;
@@ -49,8 +51,7 @@ function renderTitle() {
     const row = document.createElement('div');
     row.className = 'world';
     const open = document.createElement('button');
-    open.className = 'world';
-    open.style.cssText = 'flex:1;padding:0;background:none';
+    open.className = 'world-open';
     open.innerHTML = `<span>🏝️</span><span></span><span class="when"></span>`;
     open.children[1].textContent = w.name;
     open.children[2].textContent = ago(w.saved);
@@ -82,7 +83,7 @@ function ago(t) {
 
 function saveProfile() {
   me.name = $('playerName').value.trim().slice(0, 14);
-  store.storeProfile({ avatar: me.avatar, name: me.name });
+  store.storeProfile({ avatar: me.kind, name: me.name });
 }
 
 $('playerName').addEventListener('input', saveProfile);
@@ -100,7 +101,7 @@ function showDemo() {
   world = loadWorld(newWorldSave('demo', 20261024));
   sim = null;
   playing = false;
-  renderer.cam.x = world.spawn.x; renderer.cam.y = world.spawn.y; renderer.cam.z = 1;
+  renderer.setWorld(world);
 }
 
 // ---------------------------------------------------------------- game
@@ -109,10 +110,12 @@ function startGame(save) {
   saveProfile();
   world = loadWorld(save);
   sim = new Sim(world);
+  renderer.setWorld(world);
   const pos = save.me && isWalkable(world, Math.floor(save.me.x), Math.floor(save.me.y)) ? save.me : world.spawn;
   me.x = pos.x; me.y = pos.y; me.z = heightAt(world, Math.floor(me.x), Math.floor(me.y));
   me.path = null; me.action = null; marker = null;
-  renderer.cam.x = me.x; renderer.cam.y = me.y; renderer.cam.z = me.z;
+  renderer.target.set(me.x, me.z, me.y);
+  renderer.yawTarget = Math.round(renderer.yaw / (Math.PI / 4)) * (Math.PI / 4);
   playing = true;
   $('title').hidden = true;
   $('hud').hidden = false;
@@ -142,8 +145,10 @@ $('muteBtn').onclick = () => {
   setMuted(!isMuted());
   $('muteBtn').textContent = isMuted() ? '🔇' : '🔊';
 };
-$('zoomIn').onclick = () => renderer.setUserZoom(renderer.userZoom * 1.2);
-$('zoomOut').onclick = () => renderer.setUserZoom(renderer.userZoom / 1.2);
+$('zoomIn').onclick = () => renderer.zoomBy(1.2);
+$('zoomOut').onclick = () => renderer.zoomBy(1 / 1.2);
+$('rotL').onclick = () => renderer.rotate(-1);
+$('rotR').onclick = () => renderer.rotate(1);
 window.addEventListener('pagehide', save);
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
@@ -186,14 +191,13 @@ function toast(text) {
 const BURST = { tree: '#5cbf52', pine: '#2f8a52', fruittree: '#e8473d', rock: '#b4bcc4', flower: '#ff7eb6', shell: '#ffb3c1' };
 
 function handle(patches) {
-  const now = performance.now();
   for (const p of patches) {
-    if (p.k === 'obj' || p.k === 'inv') dirty = true;
-    if (p.k === 'inv') bump(p.item);
+    if (p.k === 'obj') { dirty = true; renderer.markDirty(); }
+    if (p.k === 'inv') { dirty = true; bump(p.item); }
     if (p.k === 'fx' && p.fx === 'gain') {
       const z = heightAt(world, p.x, p.y);
       renderer.shake(p.x, p.y, Date.now());
-      renderer.burst(p.x, p.y, z, BURST[p.obj] || '#fff', p.obj === 'flower' || p.obj === 'shell' ? 6 : 9);
+      renderer.burst(p.x, p.y, z, BURST[p.obj] || '#fff', p.obj === 'flower' || p.obj === 'shell' ? 6 : 10);
       renderer.floatText(p.x, p.y, z, ITEMS[p.item].icon, '+1');
       if (p.obj === 'rock') sfx.clink(); else if (p.obj === 'flower' || p.obj === 'shell') sfx.pop(); else sfx.chop();
       setTimeout(sfx.gain, 120);
@@ -206,7 +210,6 @@ function handle(patches) {
       toast(o && o.type === 'rock' ? 'Stenen vilar 💤 Kom tillbaka snart!' : 'Trädet vilar 💤 Kom tillbaka snart!');
     }
   }
-  void now;
 }
 
 // ---------------------------------------------------------------- actions
@@ -214,18 +217,22 @@ function near(tx, ty) {
   return Math.abs(Math.floor(me.x) - tx) <= 1 && Math.abs(Math.floor(me.y) - ty) <= 1;
 }
 
+function face(dx, dy) {
+  if (dx || dy) me.angle = Math.atan2(dx, dy);
+}
+
 function doGather(tx, ty) {
   const t = performance.now();
   if (t < me.nextAct) return;
   me.nextAct = t + ACT_COOLDOWN;
-  me.facing = (tx + 0.5 - me.x) - (ty + 0.5 - me.y) >= 0 ? 1 : -1;
+  face(tx + 0.5 - me.x, ty + 0.5 - me.y);
   me.swing = Date.now() + 200;
-  handle(sim.act({ type: 'gather', x: tx, y: ty, by: 'me' }));
+  handle(sim.act({ type: 'gather', x: tx, y: ty, by: me.id }));
 }
 
 function tapAt(sx, sy) {
   if (!playing) return;
-  const hit = renderer.pick(world, sx, sy);
+  const hit = renderer.pick(sx, sy);
   if (!hit) return;
   const { x, y, obj } = hit;
   if (obj && NATURE[obj.type]) {
@@ -253,7 +260,7 @@ canvas.addEventListener('pointerdown', (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() });
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
-    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: renderer.userZoom };
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x) };
     hold = null;
   }
 });
@@ -264,7 +271,16 @@ canvas.addEventListener('pointermove', (e) => {
   p.x = e.clientX; p.y = e.clientY;
   if (pinch && pointers.size >= 2) {
     const [a, b] = [...pointers.values()];
-    renderer.setUserZoom(pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d);
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    renderer.zoomBy(d / pinch.d);
+    pinch.d = d;
+    // Twisting two fingers turns the camera.
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    let da = ang - pinch.a;
+    da = Math.atan2(Math.sin(da), Math.cos(da));
+    renderer.yawTarget -= da;
+    renderer.yaw -= da;
+    pinch.a = ang;
     return;
   }
   if (!pinch && (Math.hypot(p.x - p.sx, p.y - p.sy) > 22 || hold)) {
@@ -277,7 +293,13 @@ function endPointer(e) {
   const p = pointers.get(e.pointerId);
   pointers.delete(e.pointerId);
   if (!p) return;
-  if (pinch) { if (pointers.size === 0) pinch = null; return; }
+  if (pinch) {
+    if (pointers.size === 0) {
+      pinch = null;
+      renderer.yawTarget = Math.round(renderer.yaw / (Math.PI / 4)) * (Math.PI / 4);
+    }
+    return;
+  }
   if (!hold && performance.now() - p.t < 450) tapAt(p.x, p.y);
   hold = null;
 }
@@ -293,32 +315,27 @@ setInterval(() => {
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  renderer.setUserZoom(renderer.userZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+  renderer.zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1);
 }, { passive: false });
 
 const keys = new Set();
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
-  keys.add(e.key.toLowerCase());
-  if (keys.size) { me.path = null; marker = null; }
+  const k = e.key.toLowerCase();
+  if (k === 'q') return renderer.rotate(-1);
+  if (k === 'e') return renderer.rotate(1);
+  keys.add(k);
+  me.path = null; marker = null;
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
 window.addEventListener('resize', () => renderer.resize());
 
-// Screen direction to world direction.
-function screenToWorldDir(dx, dy) {
-  const wx = dx / (TW / 2) + dy / (TH / 2);
-  const wy = dy / (TH / 2) - dx / (TW / 2);
-  const l = Math.hypot(wx, wy) || 1;
-  return { x: wx / l, y: wy / l };
-}
-
 function freeMove(dir, dt) {
   const step = SPEED * dt;
   const tryMove = (nx, ny) => {
     const cx = Math.floor(me.x), cy = Math.floor(me.y);
-    // Look a bit ahead so we don't hug walls.
+    // Look a bit ahead so we don't walk into trees.
     const lx = Math.floor(nx + Math.sign(nx - me.x) * 0.22), ly = Math.floor(ny + Math.sign(ny - me.y) * 0.22);
     if ((lx !== cx || ly !== cy) && !canStep(world, cx, cy, lx, ly)) return false;
     me.x = nx; me.y = ny;
@@ -327,7 +344,7 @@ function freeMove(dir, dt) {
   const moved = tryMove(me.x + dir.x * step, me.y + dir.y * step)
     || tryMove(me.x + dir.x * step, me.y)
     || tryMove(me.x, me.y + dir.y * step);
-  if (moved) me.facing = (dir.x - dir.y) >= 0 ? 1 : -1;
+  if (moved) face(dir.x, dir.y);
   return moved;
 }
 
@@ -341,20 +358,24 @@ function frame(t) {
 
   if (playing) {
     me.moving = false;
-    // Keyboard / hold: walk freely.
     let dir = null;
     if (keys.size) {
-      let sx = 0, sy = 0;
-      if (keys.has('arrowup') || keys.has('w')) sy -= 1;
-      if (keys.has('arrowdown') || keys.has('s')) sy += 1;
-      if (keys.has('arrowleft') || keys.has('a')) sx -= 1;
-      if (keys.has('arrowright') || keys.has('d')) sx += 1;
-      if (sx || sy) dir = screenToWorldDir(sx * TW / 2, sy * TW / 2);
+      let f = 0, r = 0;
+      if (keys.has('arrowup') || keys.has('w')) f += 1;
+      if (keys.has('arrowdown') || keys.has('s')) f -= 1;
+      if (keys.has('arrowleft') || keys.has('a')) r -= 1;
+      if (keys.has('arrowright') || keys.has('d')) r += 1;
+      if (f || r) {
+        const { fwd, right } = renderer.camAxes();
+        const x = fwd.x * f + right.x * r, y = fwd.y * f + right.y * r, l = Math.hypot(x, y);
+        dir = { x: x / l, y: y / l };
+      }
     } else if (hold) {
-      const p = project(me.x, me.y, me.z), c = project(renderer.cam.x, renderer.cam.y, renderer.cam.z);
-      const px = (p.sx - c.sx) * renderer.zoom + renderer.W / 2;
-      const py = (p.sy - c.sy - 20) * renderer.zoom + renderer.H / 2;
-      if (Math.hypot(hold.x - px, hold.y - py) > 18) dir = screenToWorldDir(hold.x - px, hold.y - py);
+      const g = renderer.groundPoint(hold.x, hold.y, me.z + 0.4);
+      if (g) {
+        const dx = g.x - me.x, dy = g.y - me.y, l = Math.hypot(dx, dy);
+        if (l > 0.35) dir = { x: dx / l, y: dy / l };
+      }
     }
     if (dir) me.moving = freeMove(dir, dt);
     else if (me.path && me.path.length) {
@@ -363,7 +384,7 @@ function frame(t) {
       const dx = tx - me.x, dy = ty - me.y, d = Math.hypot(dx, dy);
       const step = SPEED * dt;
       if (d <= step) { me.x = tx; me.y = ty; me.path.shift(); } else { me.x += dx / d * step; me.y += dy / d * step; }
-      me.facing = (dx - dy) >= 0 ? 1 : (dx - dy) < 0 ? -1 : me.facing;
+      face(dx, dy);
       me.moving = true;
     } else if (me.path) {
       me.path = null;
@@ -375,19 +396,12 @@ function frame(t) {
     const gz = heightAt(world, Math.floor(me.x), Math.floor(me.y));
     me.z += (gz - me.z) * Math.min(1, dt * 14);
 
-    const cam = renderer.cam;
-    const k = Math.min(1, dt * 5);
-    cam.x += (me.x - cam.x) * k; cam.y += (me.y - cam.y) * k; cam.z += (me.z - cam.z) * k;
-
     handle(sim.tick(now));
     if (dirty && t - lastSave > 4000) { save(); lastSave = t; }
-    renderer.render(world, [me], marker, now, dt);
+    renderer.render({ players: [me], marker, focus: me, t: t / 1000, dt, now });
   } else if (world) {
-    // Demo island drifts in a slow circle.
-    const a = t / 9000;
-    renderer.cam.x = world.spawn.x + Math.cos(a) * 6;
-    renderer.cam.y = world.spawn.y + Math.sin(a) * 6;
-    renderer.render(world, [], null, now, dt);
+    renderer.yawTarget += dt * 0.12;
+    renderer.render({ focus: { x: world.spawn.x, y: world.spawn.y, z: 1 }, t: t / 1000, dt, now });
   }
   requestAnimationFrame(frame);
 }
@@ -395,3 +409,6 @@ function frame(t) {
 showDemo();
 renderTitle();
 requestAnimationFrame(frame);
+
+// Test hook for automated browser checks: open the game with ?debug.
+if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, get world() { return world; } };

@@ -16,8 +16,10 @@ npm start
 
 - **Tryck** på marken för att gå dit. Tryck på ett träd, en sten eller en blomma för att samla.
 - **Håll fingret** på skärmen för att gå mot fingret.
-- **Nyp** eller använd **+ / −** för att zooma.
+- **Nyp** eller använd **+ / −** för att zooma. Vrid med två fingrar eller **↺ / ↻** (dator: Q / E).
 - Dator: **WASD** eller piltangenterna.
+
+Lägg till `?low` i adressen för enklare grafik utan skuggor.
 
 ## Bygga en fristående sida
 
@@ -27,5 +29,7 @@ npm start
 
 - `public/js/sim.js` – spelregler (körs i webbläsaren nu, på LAN-servern senare)
 - `public/js/worldgen.js` – ön skapas från ett frö
-- `public/js/render.js` – isometrisk kubgrafik på canvas
+- `public/js/render3d.js` – 3D-grafik med three.js (WebGL), sänker kvaliteten själv på långsamma enheter
+- `public/js/characters.js` – djuren, byggda av klossar
+- `public/js/textures.js` – pixeltexturer som ritas när spelet startar
 - `public/js/main.js` – spelloop, styrning och knappar

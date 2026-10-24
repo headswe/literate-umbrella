@@ -7,13 +7,14 @@ import { fileURLToPath } from 'node:url';
 
 const PORT = Number(process.env.PORT) || 8080;
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), 'public');
+const VENDOR = { '/vendor/three.module.min.js': join(fileURLToPath(new URL('.', import.meta.url)), 'node_modules/three/build/three.module.min.js') };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const rel = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '').replace(/^(\.\.[/\\])+/, '');
-  const file = join(ROOT, rel || 'index.html');
-  if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
+  const file = VENDOR[url.pathname] || join(ROOT, rel || 'index.html');
+  if (!VENDOR[url.pathname] && !file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
   try {
     const body = await readFile(file.endsWith('/') ? join(file, 'index.html') : file);
     res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });

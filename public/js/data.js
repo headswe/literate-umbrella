@@ -28,7 +28,16 @@ export const NATURE = {
   shell: { gives: 'shell', once: true, blocks: false },
 };
 
-export const AVATARS = ['🦄', '🐱', '🐶', '🐰', '🐸', '🦊', '🐼', '🤖'];
+export const AVATARS = [
+  { id: 'unicorn', icon: '🦄', name: 'Enhörning' },
+  { id: 'cat', icon: '🐱', name: 'Katt' },
+  { id: 'dog', icon: '🐶', name: 'Hund' },
+  { id: 'bunny', icon: '🐰', name: 'Kanin' },
+  { id: 'frog', icon: '🐸', name: 'Groda' },
+  { id: 'fox', icon: '🦊', name: 'Räv' },
+  { id: 'panda', icon: '🐼', name: 'Panda' },
+  { id: 'robot', icon: '🤖', name: 'Robot' },
+];
 
 export const ISLAND_NAMES = [
   'Solön', 'Stjärnön', 'Regnbågsön', 'Mysön', 'Blåbärsön', 'Molnön',

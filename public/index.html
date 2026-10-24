@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#4fb3d9">
 <title>Mysön</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;800&display=swap">
@@ -87,6 +88,18 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 .zoom { position: fixed; right: max(12px, var(--safe-r)); bottom: calc(86px + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; }
 .zoom .round { width: 44px; height: 44px; font-size: 22px; font-family: var(--font-display); font-weight: 700; }
 
+.turn { position: fixed; left: max(12px, var(--safe-l)); bottom: calc(86px + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; }
+.turn .round { width: 44px; height: 44px; font-size: 22px; font-weight: 700; }
+.overlay { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.overlay > div { position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform; }
+.nametag {
+  font: 600 13px var(--font-display); color: #fff; background: var(--ink-glass);
+  padding: 2px 9px; border-radius: 999px;
+}
+.floater {
+  font: 700 22px var(--font-display); color: #fff;
+  text-shadow: 0 2px 0 rgba(43,38,70,0.6), 0 0 6px rgba(43,38,70,0.5);
+}
 .hint {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(84px + var(--safe-b));
@@ -137,6 +150,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
   display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 16px;
   background: #e5f4fa; text-align: left; font-family: var(--font-display); font-weight: 600; font-size: 19px;
 }
+.world-open { flex: 1; display: flex; align-items: center; gap: 10px; background: none; padding: 0; text-align: left; font: inherit; }
 .world .when { margin-left: auto; font-family: var(--font-body); font-size: 13px; font-weight: 600; color: #5c5578; }
 .world .del { background: transparent; font-size: 18px; padding: 4px 6px; border-radius: 10px; }
 .world.confirm { background: #ffe1ec; }
@@ -152,13 +166,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
   .slot { font-size: 16px; padding: 3px 6px 3px 4px; min-width: 0; gap: 2px; }
   .slot .ic { font-size: 21px; }
   .hint { font-size: 15px; bottom: calc(70px + var(--safe-b)); }
-  .zoom { bottom: calc(120px + var(--safe-b)); }
+  .zoom, .turn { bottom: calc(120px + var(--safe-b)); }
 }
 @media (prefers-reduced-motion: reduce) { .slot.bump { animation: none; } }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="overlay" class="overlay"></div>
 
 <div class="hud" id="hud" hidden>
   <div class="hud-top">
@@ -171,6 +186,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
   <div class="zoom">
     <button class="pill round" id="zoomIn" aria-label="Zooma in">+</button>
     <button class="pill round" id="zoomOut" aria-label="Zooma ut">−</button>
+  </div>
+  <div class="turn">
+    <button class="pill round" id="rotL" aria-label="Vrid åt vänster">↺</button>
+    <button class="pill round" id="rotR" aria-label="Vrid åt höger">↻</button>
   </div>
   <div class="pill hint" id="hint">Tryck på ett träd för att hugga trä 🪵</div>
   <div class="pill toast" id="toast" style="opacity:0"></div>
