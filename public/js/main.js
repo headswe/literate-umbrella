@@ -1,6 +1,6 @@
 // Boot, game loop, input and HUD.
-import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T } from './data.js';
-import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt } from './sim.js';
+import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS } from './data.js';
+import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford } from './sim.js';
 import { Renderer3D } from './render3d.js';
 import { findPath } from './path.js';
 import { sfx, unlockAudio, setMuted, isMuted } from './audio.js';
@@ -26,7 +26,7 @@ const kindOf = (a) => (AVATARS.find((v) => v.id === a || v.icon === a) || AVATAR
 if (!profile.id) profile.id = 'p' + Math.random().toString(36).slice(2, 10);
 const me = {
   id: profile.id, x: 0, y: 0, z: 1, kind: kindOf(profile.avatar), name: profile.name || '',
-  angle: 0, moving: false, path: null, action: null, swing: 0, nextAct: 0, sel: 'hand',
+  angle: 0, moving: false, path: null, action: null, swing: 0, nextAct: 0, sel: 'hand', rot: 0,
 };
 const inv = () => world.players[me.id].inv;
 
@@ -116,7 +116,8 @@ function startGame(save) {
   const pl = ensurePlayer(world, me.id, { name: me.name, kind: me.kind });
   const saved = pl.x !== undefined ? pl : save.me;
   const pos = saved && isWalkable(world, Math.floor(saved.x), Math.floor(saved.y)) ? saved : world.spawn;
-  me.sel = pl.sel && (pl.sel === 'hand' || inv()[pl.sel]) ? pl.sel : 'hand';
+  me.sel = pl.sel && (pl.sel === 'hand' || inv()[pl.sel] || pl.sel.startsWith('build:') || pl.sel === 'pickup') ? pl.sel : 'hand';
+  $('rotBuild').hidden = !me.sel.startsWith('build:');
   me.x = pos.x; me.y = pos.y; me.z = heightAt(world, Math.floor(me.x), Math.floor(me.y));
   me.path = null; me.action = null; marker = null;
   renderer.target.set(me.x, me.z, me.y);
@@ -128,6 +129,7 @@ function startGame(save) {
   hintShown = !(inv().wood > 0);
   $('hint').hidden = !hintShown;
   $('bagSheet').hidden = true;
+  $('buildSheet').hidden = true;
   renderInventory();
   lastSave = performance.now();
 }
@@ -169,7 +171,7 @@ const usable = (id) => ITEMS[id].kind === 'tool' || ITEMS[id].kind === 'seed';
 // Hotbar: hand, tools and seeds you have. Materials live in the backpack.
 function renderInventory() {
   const bag = inv();
-  if (me.sel !== 'hand' && !bag[me.sel]) me.sel = 'hand';
+  if (ITEMS[me.sel] && me.sel !== 'hand' && !bag[me.sel]) me.sel = 'hand';
   const bar = $('hotbar');
   bar.innerHTML = '';
   for (const id of ITEM_ORDER) {
@@ -183,6 +185,27 @@ function renderInventory() {
     b.onclick = () => select(id);
     bar.appendChild(b);
   }
+  // Build button, plus the thing you are building right now.
+  if (me.sel.startsWith('build:') || me.sel === 'pickup') {
+    const b = document.createElement('button');
+    b.className = 'slot';
+    b.dataset.id = me.sel;
+    b.setAttribute('aria-pressed', 'true');
+    if (me.sel === 'pickup') { b.innerHTML = '<span class="ic">♻️</span>'; b.setAttribute('aria-label', 'Plocka upp'); }
+    else {
+      const id = me.sel.slice(6);
+      b.setAttribute('aria-label', BUILDS[id].name);
+      b.innerHTML = thumbs[id] ? `<img class="thumb" src="${thumbs[id]}" alt="">` : '<span class="ic">🧱</span>';
+    }
+    b.onclick = openBuild;
+    bar.appendChild(b);
+  }
+  const buildBtn = document.createElement('button');
+  buildBtn.className = 'slot build';
+  buildBtn.setAttribute('aria-label', 'Bygg');
+  buildBtn.innerHTML = '<span class="ic">🔨</span>';
+  buildBtn.onclick = openBuild;
+  bar.appendChild(buildBtn);
   const bagBtn = document.createElement('button');
   bagBtn.className = 'slot bag';
   bagBtn.id = 'bagBtn';
@@ -217,6 +240,55 @@ function renderBag() {
   if (!things.children.length) things.innerHTML = '<p class="small-note">Tomt än så länge. Samla trä, sten och blommor!</p>';
 }
 
+// ---------------------------------------------------------------- build menu
+let thumbs = {};
+function costText(id) {
+  const need = Object.entries(BUILDS[id].cost).map(([k, n]) => `${n} ${ITEMS[k].icon}`).join(' + ');
+  return `${BUILDS[id].name} kostar ${need}`;
+}
+
+function openBuild() {
+  if (!Object.keys(thumbs).length) {
+    try { thumbs = renderer.thumbnails(Object.keys(BUILDS), BUILDS); } catch { thumbs = {}; }
+  }
+  renderBuild();
+  $('buildSheet').hidden = false;
+  sfx.pop();
+}
+function closeBuild() { $('buildSheet').hidden = true; }
+
+function renderBuild() {
+  const bag = inv();
+  const list = $('buildList');
+  list.innerHTML = '';
+  for (const cat of BUILD_CATS) {
+    const h = document.createElement('p');
+    h.className = 'label';
+    h.textContent = cat.name;
+    const grid = document.createElement('div');
+    grid.className = 'bag-grid';
+    for (const [id, def] of Object.entries(BUILDS)) {
+      if (def.cat !== cat.id) continue;
+      const ok = canAfford(bag, def.cost);
+      const b = document.createElement('button');
+      b.className = 'bag-item build-item' + (ok ? '' : ' poor');
+      b.setAttribute('aria-pressed', String(me.sel === 'build:' + id));
+      b.innerHTML = `${thumbs[id] ? `<img class="thumb" src="${thumbs[id]}" alt="">` : '<span class="ic">🧱</span>'}<span class="nm"></span><span class="cost"></span>`;
+      b.querySelector('.nm').textContent = def.name;
+      b.querySelector('.cost').innerHTML = Object.entries(def.cost)
+        .map(([k, n]) => `<span class="${(bag[k] || 0) >= n ? '' : 'short'}">${n}${ITEMS[k].icon}</span>`).join('');
+      b.onclick = () => { select('build:' + id); renderInventory(); closeBuild(); };
+      grid.appendChild(b);
+    }
+    list.append(h, grid);
+  }
+}
+$('buildClose').onclick = closeBuild;
+$('buildSheet').addEventListener('pointerdown', (e) => { if (e.target === $('buildSheet')) closeBuild(); });
+$('pickupBtn').onclick = () => { select('pickup'); renderInventory(); closeBuild(); };
+$('buildStop').onclick = () => { select('hand'); renderInventory(); closeBuild(); };
+$('rotBuild').onclick = () => { me.rot = (me.rot + 1) % 4; sfx.pop(); toast('Vriden ↻'); };
+
 function openBag() { $('bagSheet').hidden = false; renderBag(); sfx.pop(); }
 function closeBag() { $('bagSheet').hidden = true; }
 $('bagClose').onclick = closeBag;
@@ -226,8 +298,11 @@ function select(id) {
   me.sel = id;
   sfx.pop();
   for (const b of $('hotbar').children) if (b.dataset.id) b.setAttribute('aria-pressed', String(b.dataset.id === id));
-  const tips = { hoe: 'Tryck på gräset för att göra jord', axe: 'Tryck på ett träd för att hugga', pickaxe: 'Tryck på en sten för att hacka' };
-  if (ITEMS[id].kind === 'seed') toast('Tryck på jorden för att plantera');
+  $('rotBuild').hidden = !id.startsWith('build:');
+  if (hintShown) { hintShown = false; $('hint').hidden = true; }
+  const tips = { hoe: 'Tryck på gräset för att göra jord', axe: 'Tryck på ett träd för att hugga', pickaxe: 'Tryck på en sten för att hacka', pickup: 'Tryck på något du byggt för att plocka upp det' };
+  if (ITEMS[id]?.kind === 'seed') toast('Tryck på jorden för att plantera');
+  else if (id.startsWith('build:')) toast('Tryck där du vill bygga');
   else if (tips[id]) toast(tips[id]);
 }
 
@@ -255,6 +330,7 @@ const SAY = {
   noapples: 'Inga äpplen just nu 🍎 Hugg med yxan 🪓?',
   needsoil: 'Gör jord först med jordhackan',
   needtool: 'Du behöver rätt verktyg',
+  occupied: 'Här står redan något',
 };
 
 function handle(patches) {
@@ -296,6 +372,17 @@ function handle(patches) {
         renderer.burst(p.x, p.y, z - 0.5, '#63c759', 8);
         if (mine) sfx.plant();
         break;
+      case 'built':
+        renderer.burst(p.x, p.y, heightAt(world, p.x, p.y) - 1, '#c99a63', 10);
+        if (mine) sfx.build();
+        break;
+      case 'pickedup':
+        renderer.burst(p.x, p.y, z - 0.5, '#ffffff', 8);
+        if (mine) sfx.pop();
+        break;
+      case 'cantafford':
+        if (mine) { sfx.nope(); toast(costText(p.id)); }
+        break;
       case 'grown':
         renderer.burst(p.x, p.y, z + 1, '#63c759', 16);
         sfx.grow();
@@ -319,23 +406,24 @@ function face(dx, dy) {
   if (dx || dy) me.angle = Math.atan2(dx, dy);
 }
 
-function doUse(tx, ty, item) {
+function doAct(tx, ty, act) {
   const t = performance.now();
   if (t < me.nextAct) return;
   me.nextAct = t + ACT_COOLDOWN;
   face(tx + 0.5 - me.x, ty + 0.5 - me.y);
   me.swing = Date.now() + 200;
-  handle(sim.act({ type: 'use', x: tx, y: ty, item, by: me.id }));
+  handle(sim.act({ ...act, x: tx, y: ty, by: me.id }));
 }
 
-// Walk next to a tile, then use an item on it.
-function goUse(x, y, item) {
-  if (near(x, y)) { me.path = null; marker = null; doUse(x, y, item); return; }
+// Walk next to a tile, then do something to it.
+function goAct(x, y, act) {
+  if (near(x, y)) { me.path = null; marker = null; doAct(x, y, act); return; }
   const path = findPath(world, Math.floor(me.x), Math.floor(me.y),
     (ax, ay) => Math.abs(ax - x) <= 1 && Math.abs(ay - y) <= 1, x, y);
   if (!path) { sfx.nope(); return; }
-  me.path = path; me.action = { x, y, item }; marker = null;
+  me.path = path; me.action = { x, y, act }; marker = { x, y };
 }
+const goUse = (x, y, item) => goAct(x, y, { type: 'use', item });
 
 function tapAt(sx, sy) {
   if (!playing) return;
@@ -343,7 +431,20 @@ function tapAt(sx, sy) {
   if (!hit) return;
   const { x, y, obj } = hit;
   const sel = me.sel;
-  const kind = ITEMS[sel].kind;
+  const kind = ITEMS[sel]?.kind;
+
+  // Building: place the chosen thing, or pick things up again.
+  if (sel.startsWith('build:')) {
+    const id = sel.slice(6);
+    if (!obj || obj.type === 'flower' || obj.type === 'shell' || (obj.type === 'build' && obj.id === id && BUILDS[id].stack)) {
+      if (!canAfford(inv(), BUILDS[id].cost)) { sfx.nope(); toast(costText(id)); return; }
+      return goAct(x, y, { type: 'build', id, rot: me.rot });
+    }
+    if (obj.type === 'build') return goAct(x, y, { type: 'pickup' });
+  }
+  if (sel === 'pickup') {
+    if (obj && obj.type === 'build') return goAct(x, y, { type: 'pickup' });
+  }
 
   // Seeds go in soil, the hoe works on grass.
   if (kind === 'seed' && obj && obj.type === 'soil') return goUse(x, y, sel);
@@ -504,7 +605,7 @@ function frame(t) {
     } else if (me.path) {
       me.path = null;
       marker = null;
-      if (me.action) { const a = me.action; me.action = null; doUse(a.x, a.y, a.item); }
+      if (me.action) { const a = me.action; me.action = null; doAct(a.x, a.y, a.act); }
     }
     if (me.moving && (stepTimer -= dt) < 0) { stepTimer = 0.28; sfx.step(); }
 
@@ -528,4 +629,4 @@ renderTitle();
 requestAnimationFrame(frame);
 
 // Test hook for automated browser checks: open the game with ?debug.
-if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, get world() { return world; } };
+if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, get world() { return world; }, get sim() { return sim; } };

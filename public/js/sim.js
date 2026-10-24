@@ -1,6 +1,6 @@
 // Game rules. The sim owns the world and turns player actions into patches.
 // In single player it runs in the browser; the LAN server will run the same code.
-import { NATURE, ITEMS, STARTER_KIT, GROW_MS, T } from './data.js';
+import { NATURE, ITEMS, STARTER_KIT, GROW_MS, BUILDS, T } from './data.js';
 import { generateWorld, key, mulberry32 } from './worldgen.js';
 
 export function newWorldSave(name, seed) {
@@ -58,16 +58,28 @@ export function tileAt(world, x, y) {
   return { t: world.terrain[i], h: world.height[i] };
 }
 
+// Ground height, counting stacked blocks you can stand on.
 export function heightAt(world, x, y) {
   const t = tileAt(world, x, y);
-  return t ? t.h : 0;
+  if (!t) return 0;
+  const o = world.objects[key(x, y)];
+  return t.h + (o && o.type === 'build' && BUILDS[o.id]?.stack ? o.h || 1 : 0);
+}
+
+export function blocks(o) {
+  if (!o) return false;
+  if (o.type === 'build') { const b = BUILDS[o.id]; return !(b.flat || b.stack); }
+  return !!NATURE[o.type]?.blocks;
 }
 
 export function isWalkable(world, x, y) {
   const t = tileAt(world, x, y);
   if (!t || t.t === T.WATER) return false;
-  const o = world.objects[key(x, y)];
-  return !(o && NATURE[o.type]?.blocks);
+  return !blocks(world.objects[key(x, y)]);
+}
+
+export function canAfford(inv, cost) {
+  return Object.entries(cost).every(([k, n]) => (inv[k] || 0) >= n);
 }
 
 // You can climb or drop one block at a time, like hopping in Minecraft.
@@ -114,7 +126,10 @@ export class Sim {
   act(a, now = Date.now()) {
     const w = this.world;
     const pl = w.players[a.by];
-    if (!pl || a.type !== 'use') return [];
+    if (!pl) return [];
+    if (a.type === 'build') return this.build(a, pl);
+    if (a.type === 'pickup') return this.pickup(a);
+    if (a.type !== 'use') return [];
     const item = a.item || 'hand';
     if (item !== 'hand' && !(pl.inv[item] > 0)) return [];
     const k = key(a.x, a.y);
@@ -172,6 +187,42 @@ export class Sim {
     } else {
       fx('nope');
     }
+    return out;
+  }
+
+  build(a, pl) {
+    const w = this.world, out = [];
+    const def = BUILDS[a.id];
+    const k = key(a.x, a.y);
+    const o = w.objects[k];
+    const t = tileAt(w, a.x, a.y);
+    const fx = (name, extra) => put(out, w, { k: 'fx', fx: name, x: a.x, y: a.y, by: a.by, ...extra });
+    if (!def || !t || t.t === T.WATER) { fx('nope'); return out; }
+    if (!canAfford(pl.inv, def.cost)) { fx('cantafford', { id: a.id }); return out; }
+    let v;
+    if (o && o.type === 'build' && o.id === a.id && def.stack) {
+      if ((o.h || 1) >= def.stack) { fx('nope'); return out; }
+      v = { ...o, h: (o.h || 1) + 1 };
+    } else if (!o || o.type === 'flower' || o.type === 'shell') {
+      if (o) { this.give(out, a.by, NATURE[o.type].gives, 1); }
+      v = { type: 'build', id: a.id, rot: a.rot || 0, ...(def.stack ? { h: 1 } : {}), by: a.by };
+    } else { fx('occupied'); return out; }
+    for (const [item, n] of Object.entries(def.cost)) this.give(out, a.by, item, -n);
+    put(out, w, { k: 'obj', key: k, v });
+    fx('built', { id: a.id });
+    return out;
+  }
+
+  // Pick a built thing up again; whoever picks it up gets the materials back.
+  pickup(a) {
+    const w = this.world, out = [];
+    const k = key(a.x, a.y);
+    const o = w.objects[k];
+    if (!o || o.type !== 'build') { put(out, w, { k: 'fx', fx: 'nope', x: a.x, y: a.y, by: a.by }); return out; }
+    const def = BUILDS[o.id];
+    for (const [item, n] of Object.entries(def.cost)) this.give(out, a.by, item, n);
+    put(out, w, { k: 'obj', key: k, v: (o.h || 1) > 1 ? { ...o, h: o.h - 1 } : null });
+    put(out, w, { k: 'fx', fx: 'pickedup', x: a.x, y: a.y, by: a.by, id: o.id });
     return out;
   }
 

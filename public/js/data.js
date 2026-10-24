@@ -45,6 +45,35 @@ export const NATURE = {
   sapling: { blocks: false },
 };
 
+// Things you can build. Costs come back when you pick them up again.
+// `stack`: blocks pile up to this many. `flat`: you can walk on it. `animated`: needs redraws (fire).
+export const BUILDS = {
+  planks: { name: 'Träkloss', cat: 'block', cost: { wood: 2 }, stack: 4 },
+  cobble: { name: 'Stenkloss', cat: 'block', cost: { stone: 2 }, stack: 4 },
+  floor: { name: 'Trägolv', cat: 'block', cost: { wood: 1 }, flat: true },
+  path: { name: 'Stenväg', cat: 'block', cost: { stone: 1 }, flat: true },
+  fence: { name: 'Staket', cat: 'block', cost: { wood: 1 } },
+  chair: { name: 'Stol', cat: 'furniture', cost: { wood: 2 } },
+  table: { name: 'Bord', cat: 'furniture', cost: { wood: 3 } },
+  bench: { name: 'Bänk', cat: 'furniture', cost: { wood: 3 } },
+  bed: { name: 'Säng', cat: 'furniture', cost: { wood: 4, flower: 2 } },
+  shelf: { name: 'Bokhylla', cat: 'furniture', cost: { wood: 4 } },
+  lamp: { name: 'Lykta', cat: 'furniture', cost: { wood: 1, stone: 1 } },
+  pot: { name: 'Blomkruka', cat: 'decor', cost: { stone: 1, flower: 1 } },
+  campfire: { name: 'Lägereld', cat: 'decor', cost: { wood: 2, stone: 2 }, animated: true },
+  mailbox: { name: 'Brevlåda', cat: 'decor', cost: { wood: 2, stone: 1 } },
+  fountain: { name: 'Snäckfontän', cat: 'decor', cost: { stone: 4, shell: 3 } },
+  statue: { name: 'Enhörningsstaty', cat: 'decor', cost: { stone: 3, star: 1 } },
+  rocket: { name: 'Rymdskepp', cat: 'decor', cost: { stone: 4, wood: 2, star: 2 } },
+  rainbow: { name: 'Regnbåge', cat: 'decor', cost: { flower: 4, star: 1 } },
+};
+
+export const BUILD_CATS = [
+  { id: 'block', name: 'Klossar' },
+  { id: 'furniture', name: 'Möbler' },
+  { id: 'decor', name: 'Pynt' },
+];
+
 // How long a planted seed takes to become a tree.
 export const GROW_MS = 60000;
 

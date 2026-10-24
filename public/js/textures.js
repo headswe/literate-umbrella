@@ -46,6 +46,7 @@ export function makeTextures() {
     leaves: paint(8, (x, y, r) => pick(r, LEAF)),
     pine: paint(9, (x, y, r) => pick(r, PINE)),
     soil: paint(11, (x, y, r) => (y % 4 === 0 ? '#4e3220' : r() < 0.5 ? '#6b4329' : '#5f3b24')),
+    cobble: paint(12, (x, y, r) => ((x % 8 === 0 && y % 8 < 7) || (y % 4 === 0) || ((x + 4) % 8 === 0 && y % 8 >= 4) ? '#6f7680' : pick(r, STONE))),
     planks: paint(10, (x, y, r) => (y % 4 === 3 ? '#9b6a3f' : (x + (y >> 2) * 5) % 8 === 0 ? '#a77548' : r() < 0.5 ? '#c99a63' : '#c1915b')),
   };
 }

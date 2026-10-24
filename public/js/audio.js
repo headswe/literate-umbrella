@@ -39,5 +39,6 @@ export const sfx = {
   dig: () => { tone(140, 0.09, 'triangle', 0.1, -50); tone(200, 0.07, 'sine', 0.06, -60, 0.05); },
   plant: () => { tone(440, 0.08, 'sine', 0.08); tone(660, 0.12, 'sine', 0.08, 120, 0.07); },
   grow: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.12, 'sine', 0.07, 0, i * 0.07)); },
+  build: () => { tone(300, 0.06, 'square', 0.06, -80); tone(450, 0.08, 'triangle', 0.08, 0, 0.06); tone(600, 0.1, 'sine', 0.06, 0, 0.12); },
   step: () => { tone(90 + Math.random() * 30, 0.04, 'triangle', 0.03); },
 };
