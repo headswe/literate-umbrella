@@ -87,15 +87,18 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 }
 .hotbar::-webkit-scrollbar { display: none; }
 .slot {
-  position: relative; flex: 0 0 auto; width: 56px; height: 56px; border-radius: 16px;
+  /* Shrinks on narrow phones so nine slots fit without scrolling. */
+  --slot: clamp(40px, calc((100vw - 76px) / 9), 56px);
+  position: relative; flex: 0 0 auto; width: var(--slot); height: var(--slot); border-radius: 16px;
   background: rgba(255,255,255,0.14); display: grid; place-items: center;
 }
-.slot .ic { font-size: 30px; line-height: 1; display: grid; place-items: center; }
+.slot .ic { font-size: calc(var(--slot) * 0.54); line-height: 1; display: grid; place-items: center; }
 .ic svg { width: 1em; height: 1em; display: block; }
 .slot .n {
   position: absolute; right: 3px; bottom: 1px; font: 700 15px var(--font-display); color: #fff;
   text-shadow: 0 1px 0 rgba(0,0,0,0.6); font-variant-numeric: tabular-nums;
 }
+.slot .more { position: absolute; left: 3px; top: 1px; font: 700 12px var(--font-display); color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.6); }
 .slot[aria-pressed="true"] { background: var(--sun); box-shadow: inset 0 0 0 3px #fff; }
 .slot.bag { background: rgba(255,111,168,0.9); }
 .slot.bump { animation: bump 0.35s ease-out; }
@@ -131,6 +134,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 .bubble b { font-size: 15px; }
 .bubble .think { font-size: 20px; }
 .bubble .say { font: 600 15px/1.25 var(--font-display); white-space: normal; width: max-content; max-width: 200px; padding: 2px 2px; text-align: center; }
+.house-enter { width: 100%; font-size: 22px; padding: 14px; margin: 6px 0 4px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.swatch { width: 52px; height: 52px; border-radius: 50%; border: 4px solid #fff; box-shadow: 0 0 0 2px #e3d7bc; }
+.swatch[aria-pressed="true"] { box-shadow: 0 0 0 4px var(--ink); }
+.mail-item.unread { background: var(--sun); }
+.letter { background: #fffdf6; border: 2px dashed #e3d7bc; border-radius: 18px; padding: 14px 16px; margin-top: 6px; }
+.letter-from { font: 700 15px var(--font-body); color: #6d6690; margin: 0 0 6px; }
+.letter-text { font: 600 21px/1.4 var(--font-display); margin: 0 0 10px; }
+.letter-gift { font: 700 16px var(--font-body); margin: 0 0 12px; }
+.letter-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .talk-card { display: flex; flex-direction: column; gap: 12px; }
 .talk-head { display: flex; align-items: center; gap: 14px; }
 .talk-head > div:nth-child(2) { flex: 1; min-width: 0; }
@@ -140,9 +153,22 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 .talk-text { font: 600 21px/1.35 var(--font-display); margin: 0; text-wrap: pretty; }
 .talk-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .talk-actions .big { flex: 1; min-width: 160px; font-size: 22px; padding: 14px; }
+.museum-item.missing .ic { filter: grayscale(1) brightness(0.2); opacity: 0.35; }
+.museum-item.ready { background: #ffe9a8; box-shadow: inset 0 0 0 3px var(--sun); }
+.museum-item .who { font: 600 12px var(--font-body); color: #6d6690; }
+.cook-list { display: flex; flex-direction: column; gap: 10px; }
+.cook-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 18px; background: #f1ebdc;
+  font: 600 18px var(--font-display); color: var(--ink); text-align: left;
+}
+.cook-item .need { font-size: 26px; letter-spacing: 2px; }
+.cook-item .arrow { color: #a59fbd; }
+.cook-item .out { font-size: 34px; }
+.cook-item .nm { flex: 1; }
+.cook-item:disabled { opacity: 0.5; }
 .talk-actions .big:disabled { background: #b9b3c9; box-shadow: none; }
 .thumb { width: 64px; height: 64px; display: block; image-rendering: auto; }
-.slot .thumb { width: 46px; height: 46px; }
+.slot .thumb { width: calc(var(--slot) - 10px); height: calc(var(--slot) - 10px); }
 .build-item .nm { text-align: center; line-height: 1.1; }
 .build-item .cost { display: flex; gap: 4px; font: 700 13px var(--font-body); color: var(--ink); font-variant-numeric: tabular-nums; }
 .build-item .cost .short { color: #c0392b; }
@@ -245,8 +271,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 
 @media (max-width: 480px) {
   .hotbar { gap: 4px; padding: 4px; }
-  .slot { width: 48px; height: 48px; border-radius: 14px; }
-  .slot .ic { font-size: 26px; }
+  .slot { --slot: clamp(38px, calc((100vw - 60px) / 9), 48px); border-radius: 14px; }
   .hint { font-size: 15px; bottom: calc(70px + var(--safe-b)); }
   .zoom, .turn { bottom: calc(120px + var(--safe-b)); }
   .rot-build { bottom: calc(226px + var(--safe-b)); }
@@ -262,7 +287,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
   <div class="hud-top">
     <div class="pill island-name" id="islandName">Mysön</div>
     <div class="hud-buttons">
-      <button class="pill round" id="inviteBtn" aria-label="Bjud in en kompis" aria-pressed="false">👋</button>
+      <button class="pill round" id="exitBtn" aria-label="Gå ut" hidden>🚪</button>
+      <button class="pill round" id="waveBtn" aria-label="Vinka">👋</button>
+      <button class="pill round" id="inviteBtn" aria-label="Bjud in en kompis" aria-pressed="false">👫</button>
       <button class="pill round" id="muteBtn" aria-label="Ljud av/på">🔊</button>
       <button class="pill round" id="homeBtn" aria-label="Till start">🏠</button>
     </div>
@@ -300,6 +327,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
       <p class="talk-text" id="talkText"></p>
       <div class="talk-actions">
         <button class="big" id="talkGive" hidden>Ge</button>
+        <button class="chip-btn" id="talkTreat" hidden>Bjud på mat</button>
         <button class="chip-btn" id="talkBye">Hej då 👋</button>
       </div>
     </div>
@@ -309,8 +337,54 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
       <div class="bag-head"><h2>Ryggsäck</h2><button class="bag-close" id="bagClose" aria-label="Stäng">✕</button></div>
       <p class="label">Verktyg och frön</p>
       <div class="bag-grid" id="bagUse"></div>
+      <div id="bagFoodWrap" hidden>
+        <p class="label">Mat: tryck för att äta 😋</p>
+        <div class="bag-grid" id="bagFood"></div>
+      </div>
       <p class="label">Saker</p>
       <div class="bag-grid" id="bagThings"></div>
+      <p class="label">Husdjur 🐾</p>
+      <p class="small-note" id="petNote"></p>
+      <div class="bag-grid" id="bagPets"></div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="museumSheet" hidden>
+    <div class="bag-card" role="dialog" aria-label="Museum">
+      <div class="bag-head"><h2>Museum 🏛️</h2><button class="bag-close" id="museumClose" aria-label="Stäng">✕</button></div>
+      <p class="small-note" id="museumNote">Ge museet en av varje fisk och småkryp. Du får en ⭐ för varje ny!</p>
+      <div class="bag-grid" id="museumList"></div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="houseSheet" hidden>
+    <div class="bag-card" role="dialog" aria-label="Hus">
+      <div class="bag-head"><h2 id="houseTitle">Hus</h2><button class="bag-close" id="houseClose" aria-label="Stäng">✕</button></div>
+      <button class="big house-enter" id="houseEnter">🚪 Gå in</button>
+      <p class="label">Måla taket</p>
+      <div class="swatches" id="roofColors"></div>
+      <p class="label">Måla väggarna</p>
+      <div class="swatches" id="wallColors"></div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="mailSheet" hidden>
+    <div class="bag-card" role="dialog" aria-label="Brevlåda">
+      <div class="bag-head"><h2>Brevlåda 📮</h2><button class="bag-close" id="mailClose" aria-label="Stäng">✕</button></div>
+      <p class="small-note" id="mailNote"></p>
+      <div class="bag-grid" id="mailList"></div>
+      <div class="letter" id="mailLetter" hidden>
+        <p class="letter-from" id="mailFrom"></p>
+        <p class="letter-text" id="mailText"></p>
+        <p class="letter-gift" id="mailGift"></p>
+        <div class="letter-buttons">
+          <button class="chip-btn" id="mailRead">🔊 Läs igen</button>
+          <button class="chip-btn" id="mailBack">✉️ Alla brev</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="cookSheet" hidden>
+    <div class="bag-card" role="dialog" aria-label="Laga mat">
+      <div class="bag-head"><h2>Laga mat 🔥</h2><button class="bag-close" id="cookClose" aria-label="Stäng">✕</button></div>
+      <div class="cook-list" id="cookList"></div>
     </div>
   </div>
 </div>
@@ -343,7 +417,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
         <input class="name-input" id="joinCode" maxlength="12" placeholder="Kod, t.ex. SOL-42" autocomplete="off" autocapitalize="characters" spellcheck="false">
         <button class="big blue" id="joinBtn">Gå med</button>
       </div>
-      <p class="small-note" id="joinNote">Kompisen trycker på 👋 på sin ö och läser upp koden.</p>
+      <p class="small-note" id="joinNote">Kompisen trycker på 👫 på sin ö och läser upp koden.</p>
     </div>
     <div id="sharedWrap" class="shared-wrap" hidden>
       <p class="label">Tillsammans på wifi:t</p>

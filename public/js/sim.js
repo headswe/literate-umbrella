@@ -1,16 +1,18 @@
 // Game rules. The sim owns the world and turns player actions into patches.
 // In single player it runs in the browser; the LAN server will run the same code.
-import { NATURE, ITEMS, STARTER_KIT, GROW_MS, BUILDS, VILLAGERS, T } from './data.js';
+import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, BUGS, COLLECTION, CROP_MS, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE, PETS, PET_FINDS, LETTERS, LETTER_GIFTS, MAIL_MS, ROOF_COLORS, WALL_COLORS, ROOM_SIZE, ROOM_CATS } from './data.js';
 import { generateWorld, key, mulberry32 } from './worldgen.js';
 
 export function newWorldSave(name, seed) {
-  const gen = generateWorld(seed);
+  const gen = generateWorld(seed, WORLD_SIZE);
   return {
     id: 'w' + seed.toString(36) + Date.now().toString(36),
     name,
     seed,
+    size: WORLD_SIZE,
     created: Date.now(),
     version: 2,
+    tiles: {},
     players: {},
     objects: gen.objects,
     villagers: {},
@@ -39,11 +41,17 @@ export function doorOf(w, home) {
   return { x: x + size / 2, y: y + size + 0.5 };
 }
 
-// A playable world: the save plus terrain rebuilt from the seed.
+// A playable world: the save plus terrain rebuilt from the seed, with dug and filled tiles on top.
 export function loadWorld(save) {
-  const gen = generateWorld(save.seed);
+  const gen = generateWorld(save.seed, save.size || OLD_WORLD_SIZE);
   const w = { ...save, size: gen.size, terrain: gen.terrain, height: gen.height, spawn: gen.spawn };
+  w.tiles = { ...(save.tiles || {}) };
+  for (const [k, [t, h]] of Object.entries(w.tiles)) {
+    const [x, y] = k.split(',').map(Number);
+    if (x >= 0 && y >= 0 && x < w.size && y < w.size) { w.terrain[y * w.size + x] = t; w.height[y * w.size + x] = h; }
+  }
   w.players = w.players || {};
+  for (const p of Object.values(w.players)) for (const t of ALWAYS_TOOLS) if (!p.inv[t]) p.inv[t] = 1;
   if (!save.version) {
     // Version 1 saves had one shared bag and trees that never fell.
     w.legacyInv = save.inv;
@@ -58,8 +66,8 @@ export function loadWorld(save) {
 }
 
 export function toSave(world) {
-  const { id, name, seed, created, version, players, objects, villagers } = world;
-  return { id, name, seed, created, version, players, objects, villagers, saved: Date.now() };
+  const { id, name, seed, size, created, version, players, objects, villagers, tiles, museum } = world;
+  return { id, name, seed, size, created, version, players, objects, villagers, tiles, museum, saved: Date.now() };
 }
 
 // Make sure a player has a bag. New players get the starter kit.
@@ -99,7 +107,7 @@ export function blocks(o) {
 
 export function isWalkable(world, x, y) {
   const t = tileAt(world, x, y);
-  if (!t || t.t === T.WATER) return false;
+  if (!t || t.t === T.WATER || t.t === T.WALL) return false;
   return !blocks(world.objects[key(x, y)]);
 }
 
@@ -119,18 +127,23 @@ export function refresh(o, now) {
     o.apples = NATURE.fruittree.apples;
     delete o.appleRest;
   }
+  if (o && o.type === 'berrybush' && o.berryRest && o.berryRest <= now) {
+    o.berries = NATURE.berrybush.berries;
+    delete o.berryRest;
+  }
   return o;
 }
 
-// How grown a sapling is, 0..1.
+// How grown a sapling is, 0..1. Garden plants are quicker than trees.
 export function growth(o, now) {
-  return Math.max(0, Math.min(1, (now - o.t0) / GROW_MS));
+  return Math.max(0, Math.min(1, (now - o.t0) / (NATURE[o.grows]?.crop ? CROP_MS : GROW_MS)));
 }
 
 // Which item a tap on this object should use, if the player has it.
 export function toolFor(o, selected) {
   if (!o) return null;
   if (o.type === 'fruittree') return selected === 'axe' ? 'axe' : 'hand';
+  if (o.type === 'bug') return 'net';
   return NATURE[o.type]?.tool || null;
 }
 
@@ -152,9 +165,23 @@ export class Sim {
     const w = this.world;
     const pl = w.players[a.by];
     if (!pl) return [];
-    if (a.type === 'build') return this.build(a, pl, now);
+    if (a.type === 'build') {
+      // A new mailbox gets its first letter soon.
+      if (a.id === 'mailbox') this.nextMail = Math.min(this.nextMail ?? Infinity, now + 20000);
+      return this.build(a, pl, now);
+    }
     if (a.type === 'pickup') return this.pickup(a);
     if (a.type === 'give') return this.giveWish(a, pl, now);
+    if (a.type === 'cook') return this.cook(a, pl);
+    if (a.type === 'eat') return this.eat(a, pl);
+    if (a.type === 'treat') return this.treat(a, pl, now);
+    if (a.type === 'donate') return this.donate(a, pl);
+    if (a.type === 'adopt') return this.adopt(a, pl, now);
+    if (a.type === 'petfind') return this.petFind(a, pl, now);
+    if (a.type === 'openmail') return this.openMail(a, pl);
+    if (a.type === 'paint') return this.paint(a);
+    if (a.type === 'roomput') return this.roomPut(a, pl);
+    if (a.type === 'roomtake') return this.roomTake(a);
     if (a.type !== 'use') return [];
     const item = a.item || 'hand';
     if (item !== 'hand' && !(pl.inv[item] > 0)) return [];
@@ -169,6 +196,20 @@ export class Sim {
         put(out, w, { k: 'obj', key: k, v: null });
         this.give(out, a.by, def.gives, 1);
         fx('gain', { item: def.gives, n: 1 });
+      } else if (o && o.type === 'carrot') {
+        // Pull the carrots up; the soil stays for planting again, sometimes with a new seed.
+        put(out, w, { k: 'obj', key: k, v: { type: 'soil' } });
+        this.give(out, a.by, 'carrot', 2);
+        fx('gain', { item: 'carrot', n: 2 });
+        if (this.rand() < 0.6) { this.give(out, a.by, 'seed_carrot', 1); fx('gain', { item: 'seed_carrot', n: 1, delay: 350 }); }
+      } else if (o && o.type === 'berrybush') {
+        if (!o.berries) fx('noberries');
+        else {
+          const berries = o.berries - 1;
+          put(out, w, { k: 'obj', key: k, v: { ...o, berries, ...(berries ? {} : { berryRest: now + def.berryRest }) } });
+          this.give(out, a.by, 'berry', 1);
+          fx('gain', { item: 'berry', n: 1 });
+        }
       } else if (o && o.type === 'fruittree') {
         if (!o.apples) fx('noapples');
         else {
@@ -204,6 +245,22 @@ export class Sim {
         put(out, w, { k: 'obj', key: k, v: { type: 'soil' } });
         fx('till');
       } else fx('nope');
+    } else if (item === 'rod') {
+      const t = tileAt(w, a.x, a.y);
+      if (!t || t.t !== T.WATER) { fx('nope'); return out; }
+      let r = this.rand(), got = CATCH[0][0];
+      for (const [id, p] of CATCH) { if (r < p) { got = id; break; } r -= p; }
+      this.give(out, a.by, got, 1);
+      fx('fish', { item: got, n: 1, delay: 1500 + Math.floor(this.rand() * 1200) });
+    } else if (item === 'net') {
+      if (!o || o.type !== 'bug') { fx('nope'); return out; }
+      put(out, w, { k: 'obj', key: k, v: null });
+      this.give(out, a.by, o.kind, 1);
+      fx('caught', { item: o.kind, n: 1 });
+    } else if (item === 'shovel') {
+      this.dig(out, a, o, fx);
+    } else if (item === 'dirt') {
+      this.fill(out, a, o, fx);
     } else if (ITEMS[item]?.kind === 'seed') {
       if (o && o.type === 'soil') {
         put(out, w, { k: 'obj', key: k, v: { type: 'sapling', grows: ITEMS[item].grows, t0: now } });
@@ -214,6 +271,50 @@ export class Sim {
       fx('nope');
     }
     return out;
+  }
+
+  pickBug() {
+    let r = this.rand();
+    for (const [id, p] of BUGS) { if (r < p) return id; r -= p; }
+    return BUGS[0][0];
+  }
+
+  // Spade: dig up treasure, turn grass into a dirt road, or dig a road down (a pond at the bottom).
+  dig(out, a, o, fx) {
+    const w = this.world, k = key(a.x, a.y), t = tileAt(w, a.x, a.y);
+    if (o && o.type === 'buried') {
+      put(out, w, { k: 'obj', key: k, v: null });
+      const loot = ['shell', 'seed_fruit', 'seed_carrot', 'seed_berry', 'seed_pine'][Math.floor(this.rand() * 5)];
+      this.give(out, a.by, 'star', 2);
+      this.give(out, a.by, loot, 1);
+      fx('treasure', { item: 'star', n: 2, loot });
+      return;
+    }
+    if (!t || t.t === T.WATER || (o && o.type !== 'flower')) { fx('nope'); return; }
+    if (o) { put(out, w, { k: 'obj', key: k, v: null }); this.give(out, a.by, 'flower', 1); }
+    if (t.t === T.GRASS) {
+      put(out, w, { k: 'tile', key: k, t: T.DIRT, h: t.h });
+      fx('road');
+      return;
+    }
+    put(out, w, t.h > 1 ? { k: 'tile', key: k, t: t.t, h: t.h - 1 } : { k: 'tile', key: k, t: T.WATER, h: 0 });
+    this.give(out, a.by, 'dirt', 1);
+    fx('dig', { item: 'dirt', n: 1 });
+  }
+
+  // Earth: fill a pond, mend a road back to grass, or make a hill one step higher.
+  fill(out, a, o, fx) {
+    const w = this.world, k = key(a.x, a.y), t = tileAt(w, a.x, a.y);
+    if (!t || (o && o.type !== 'flower' && o.type !== 'shell')) { fx('nope'); return; }
+    let v;
+    if (t.t === T.WATER) v = { t: T.GRASS, h: 1 };
+    else if (t.t === T.DIRT) v = { t: T.GRASS, h: t.h };
+    else if (t.h < MAX_HEIGHT) v = { t: T.GRASS, h: t.h + 1 };
+    else { fx('toohigh'); return; }
+    if (o) { put(out, w, { k: 'obj', key: k, v: null }); this.give(out, a.by, NATURE[o.type].gives, 1); }
+    put(out, w, { k: 'tile', key: k, ...v });
+    this.give(out, a.by, 'dirt', -1);
+    fx('fill');
   }
 
   build(a, pl, now = Date.now()) {
@@ -295,6 +396,147 @@ export class Sim {
     return out;
   }
 
+  // Campfire: turn fish and apples into food.
+  cook(a, pl) {
+    const out = [];
+    const r = RECIPES.find((x) => x.id === a.recipe);
+    const o = this.world.objects[key(a.x, a.y)];
+    if (!r || !o || o.type !== 'build' || o.id !== 'campfire') return out;
+    if (!canAfford(pl.inv, r.needs)) { put(out, this.world, { k: 'fx', fx: 'nope', x: a.x, y: a.y, by: a.by }); return out; }
+    for (const [item, n] of Object.entries(r.needs)) this.give(out, a.by, item, -n);
+    this.give(out, a.by, r.id, 1);
+    put(out, this.world, { k: 'fx', fx: 'cooked', x: a.x, y: a.y, by: a.by, item: r.id });
+    return out;
+  }
+
+  // Eating is a treat: you run fast for a while. Nothing bad happens if you never eat.
+  eat(a, pl) {
+    const out = [];
+    const def = ITEMS[a.item];
+    if (!def?.eat || !(pl.inv[a.item] > 0)) return out;
+    this.give(out, a.by, a.item, -1);
+    put(out, this.world, { k: 'fx', fx: 'ate', by: a.by, item: a.item, secs: def.eat });
+    return out;
+  }
+
+  // The museum keeps one of each fish and little animal, with the name of who found it.
+  donate(a, pl) {
+    const out = [], w = this.world;
+    const o = w.objects[key(a.x, a.y)];
+    if (!o || o.type !== 'build' || o.id !== 'museum' || !COLLECTION.includes(a.item)) return out;
+    w.museum = w.museum || {};
+    if (w.museum[a.item] || !(pl.inv[a.item] > 0)) return out;
+    this.give(out, a.by, a.item, -1);
+    this.give(out, a.by, 'star', 1);
+    put(out, w, { k: 'museum', item: a.item, who: pl.name || '' });
+    put(out, w, { k: 'fx', fx: 'donated', x: a.x, y: a.y, by: a.by, item: a.item });
+    return out;
+  }
+
+  // Choose a pet (or swap for another kind). It follows its owner everywhere.
+  adopt(a, pl, now) {
+    const out = [];
+    if (!PETS[a.kind]) return out;
+    const name = String(a.name || PETS[a.kind].name).slice(0, 16);
+    const renamed = pl.pet?.kind === a.kind;
+    put(out, this.world, { k: 'pet', pid: a.by, v: { kind: a.kind, name, findAt: renamed ? pl.pet.findAt : now + 60000 } });
+    put(out, this.world, { k: 'fx', fx: 'adopted', by: a.by, kind: a.kind, renamed });
+    return out;
+  }
+
+  // A new colour for a house's roof or walls.
+  paint(a) {
+    const out = [], w = this.world;
+    const k = key(a.x, a.y), o = w.objects[k];
+    if (!o || o.type !== 'build' || o.id !== 'house') return out;
+    const colors = a.part === 'roof' ? ROOF_COLORS : a.part === 'wall' ? WALL_COLORS : null;
+    if (!colors || !colors.includes(a.color)) return out;
+    put(out, w, { k: 'obj', key: k, v: { ...o, [a.part]: a.color } });
+    put(out, w, { k: 'fx', fx: 'painted', x: a.x, y: a.y, by: a.by });
+    return out;
+  }
+
+  // Furniture inside a house. Rooms are kept on the house itself, tile by tile.
+  roomPut(a, pl) {
+    const out = [], w = this.world;
+    const house = w.objects[a.house], def = BUILDS[a.id];
+    const fx = (name, extra) => put(out, w, { k: 'fx', fx: name, x: a.x, y: a.y, by: a.by, house: a.house, ...extra });
+    if (!house || house.id !== 'house' || !def || !ROOM_CATS.includes(def.cat)) return out;
+    if (!(a.x >= 1 && a.y >= 1 && a.x < ROOM_SIZE && a.y < ROOM_SIZE - 1)) { fx('nope'); return out; }
+    const rk = key(a.x, a.y), cur = house.room?.[rk];
+    const stack = cur && cur.id === a.id && def.stack && (cur.h || 1) < def.stack;
+    if (cur && !stack) { fx('occupied'); return out; }
+    if (!canAfford(pl.inv, def.cost)) { fx('cantafford', { id: a.id }); return out; }
+    for (const [item, n] of Object.entries(def.cost)) this.give(out, a.by, item, -n);
+    put(out, w, { k: 'room', house: a.house, key: rk, v: stack ? { ...cur, h: (cur.h || 1) + 1 } : { type: 'build', id: a.id, rot: a.rot || 0, by: a.by } });
+    fx('built');
+    return out;
+  }
+
+  roomTake(a) {
+    const out = [], w = this.world;
+    const house = w.objects[a.house], rk = key(a.x, a.y), cur = house?.room?.[rk];
+    if (!cur || cur.id === 'doormat') { put(out, w, { k: 'fx', fx: 'nope', x: a.x, y: a.y, by: a.by, house: a.house }); return out; }
+    for (const [item, n] of Object.entries(BUILDS[cur.id].cost)) this.give(out, a.by, item, n);
+    put(out, w, { k: 'room', house: a.house, key: rk, v: (cur.h || 1) > 1 ? { ...cur, h: cur.h - 1 } : null });
+    put(out, w, { k: 'fx', fx: 'pickedup', x: a.x, y: a.y, by: a.by, house: a.house, id: cur.id });
+    return out;
+  }
+
+  // Reading a letter takes out the present that came with it.
+  openMail(a, pl) {
+    const out = [];
+    const letter = (pl.mail || []).find((m) => m.id === a.id);
+    if (!letter || letter.read) return out;
+    if (letter.gift) this.give(out, a.by, letter.gift, 1);
+    put(out, this.world, { k: 'mail', pid: a.by, mail: pl.mail.map((m) => (m.id === a.id ? { ...m, read: true } : m)) });
+    put(out, this.world, { k: 'fx', fx: 'mailopened', by: a.by, item: letter.gift, from: letter.from });
+    return out;
+  }
+
+  // Friends write to everyone with a name, as long as the island has a mailbox.
+  deliverMail(out, now) {
+    const w = this.world;
+    const friends = Object.values(w.villagers || {});
+    if (!friends.length || !Object.values(w.objects).some((o) => o.type === 'build' && o.id === 'mailbox')) return;
+    for (const [pid, pl] of Object.entries(w.players)) {
+      if (!pl.name) continue;
+      const mail = pl.mail || [];
+      if (mail.filter((m) => !m.read).length >= 3) continue;
+      const vil = friends[Math.floor(this.rand() * friends.length)];
+      const from = VILLAGERS.find((v) => v.id === vil.id)?.name || 'en kompis';
+      const text = LETTERS[Math.floor(this.rand() * LETTERS.length)].replace('{namn}', pl.name).replace('{från}', from);
+      const gift = LETTER_GIFTS[Math.floor(this.rand() * LETTER_GIFTS.length)];
+      const letter = { id: now.toString(36) + Math.floor(this.rand() * 1e6).toString(36), from: vil.id, text, gift, t: now };
+      // Keep the newest twelve letters.
+      put(out, w, { k: 'mail', pid, mail: [letter, ...mail].slice(0, 12) });
+      put(out, w, { k: 'fx', fx: 'mail', by: pid, from: vil.id });
+    }
+  }
+
+  // Every couple of minutes the pet sniffs out a little present.
+  petFind(a, pl, now) {
+    const out = [];
+    if (!pl.pet || pl.pet.findAt > now) return out;
+    const item = PET_FINDS[Math.floor(this.rand() * PET_FINDS.length)];
+    this.give(out, a.by, item, 1);
+    put(out, this.world, { k: 'pet', pid: a.by, v: { ...pl.pet, findAt: now + 120000 + this.rand() * 60000 } });
+    put(out, this.world, { k: 'fx', fx: 'petfound', by: a.by, item });
+    return out;
+  }
+
+  // Give a friend some food just because. They love it.
+  treat(a, pl, now) {
+    const out = [];
+    const vil = this.world.villagers?.[a.vid];
+    if (!vil || !ITEMS[a.item]?.eat || !(pl.inv[a.item] > 0)) return out;
+    if (vil.treatAt > now) { put(out, this.world, { k: 'fx', fx: 'full', vid: vil.id, by: a.by }); return out; }
+    this.give(out, a.by, a.item, -1);
+    put(out, this.world, { k: 'vil', id: vil.id, v: { ...vil, hearts: vil.hearts + 1, treatAt: now + 60000 } });
+    put(out, this.world, { k: 'fx', fx: 'treated', vid: vil.id, by: a.by, item: a.item });
+    return out;
+  }
+
   fulfil(out, vil, by, now) {
     const hearts = vil.hearts + 1;
     const stars = hearts % 3 === 0 ? 2 : 1;
@@ -312,9 +554,11 @@ export class Sim {
       const id = info.likes[Math.floor(this.rand() * info.likes.length)];
       return { kind: 'build', id };
     }
-    const items = ['wood', 'stone', 'fruit', 'flower', 'shell'];
+    const items = ['wood', 'stone', 'fruit', 'flower', 'shell', 'fish', 'goldfish', 'grilled', 'pie', 'soup'];
     const item = items[Math.floor(this.rand() * items.length)];
-    return { kind: 'give', item, n: 1 + Math.floor(this.rand() * 3) };
+    // Cooked food and goldfish take more work, so one is enough.
+    const one = ITEMS[item].eat > 20 || item === 'goldfish';
+    return { kind: 'give', item, n: one ? 1 : 1 + Math.floor(this.rand() * 3) };
   }
 
   // Villagers stroll around their home, think up wishes, and new ones move into empty houses.
@@ -369,13 +613,24 @@ export class Sim {
       this.nextVil = now + 250;
       this.tickVillagers(now, out);
     }
+    if (now >= (this.nextMail ?? (this.nextMail = now + 90000))) {
+      this.nextMail = now + MAIL_MS;
+      this.deliverMail(out, now);
+    }
     if (now >= this.nextGrow) {
       this.nextGrow = now + 1000;
       for (const k in w.objects) {
         const o = w.objects[k];
+        if (o.type === 'bug' && now - o.t0 > 120000) {
+          // Little animals don't stay forever; new ones come instead.
+          put(out, w, { k: 'obj', key: k, v: null });
+          continue;
+        }
         if (o.type === 'sapling' && growth(o, now) >= 1) {
           const v = { type: o.grows, hp: NATURE[o.grows].hp };
           if (o.grows === 'fruittree') v.apples = NATURE.fruittree.apples;
+          if (o.grows === 'berrybush') v.berries = NATURE.berrybush.berries;
+          if (NATURE[o.grows].crop) delete v.hp;
           const [x, y] = k.split(',').map(Number);
           put(out, w, { k: 'obj', key: k, v });
           put(out, w, { k: 'fx', fx: 'grown', x, y, obj: o.grows });
@@ -384,14 +639,17 @@ export class Sim {
     }
     if (now >= this.nextSpawn) {
       this.nextSpawn = now + 6000;
-      let flowers = 0, shells = 0, rocks = 0;
+      let flowers = 0, shells = 0, rocks = 0, buried = 0, bugs = 0;
       for (const k in w.objects) {
         const t = w.objects[k].type;
         if (t === 'flower') flowers++;
         else if (t === 'shell') shells++;
         else if (t === 'rock') rocks++;
+        else if (t === 'buried') buried++;
+        else if (t === 'bug') bugs++;
       }
-      const want = rocks < 14 ? 'rock' : flowers < 60 ? 'flower' : shells < 20 ? 'shell' : null;
+      const room = (w.size / OLD_WORLD_SIZE) ** 2; // bigger islands get more of everything
+      const want = rocks < 14 * room ? 'rock' : buried < 3 ? 'buried' : bugs < 5 * room ? 'bug' : flowers < 60 * room ? 'flower' : shells < 20 * room ? 'shell' : null;
       for (let tries = 0; want && tries < 30; tries++) {
         const x = 1 + Math.floor(this.rand() * (w.size - 2));
         const y = 1 + Math.floor(this.rand() * (w.size - 2));
@@ -399,7 +657,8 @@ export class Sim {
         const k = key(x, y);
         if (w.objects[k] || this.nearPlayer(x, y)) continue;
         if (want === 'shell' ? t.t !== T.SAND : t.t !== T.GRASS) continue;
-        const v = want === 'flower' ? { type: 'flower', color: Math.floor(this.rand() * 4) } : want === 'rock' ? { type: 'rock', hp: 3 } : { type: 'shell' };
+        const v = want === 'flower' ? { type: 'flower', color: Math.floor(this.rand() * 4) } : want === 'rock' ? { type: 'rock', hp: 3 }
+          : want === 'bug' ? { type: 'bug', kind: this.pickBug(), t0: now } : { type: want };
         put(out, w, { k: 'obj', key: k, v });
         break;
       }
@@ -425,6 +684,25 @@ export function applyPatch(w, p) {
   if (p.k === 'obj') {
     if (p.v) w.objects[p.key] = p.v;
     else delete w.objects[p.key];
+  } else if (p.k === 'tile') {
+    const [x, y] = p.key.split(',').map(Number);
+    w.terrain[y * w.size + x] = p.t;
+    w.height[y * w.size + x] = p.h;
+    (w.tiles || (w.tiles = {}))[p.key] = [p.t, p.h];
+  } else if (p.k === 'room') {
+    const house = w.objects[p.house];
+    if (!house) return;
+    const room = house.room || (house.room = {});
+    if (p.v) room[p.key] = p.v;
+    else delete room[p.key];
+  } else if (p.k === 'mail') {
+    const pl = w.players[p.pid] || (w.players[p.pid] = { inv: {} });
+    pl.mail = p.mail;
+  } else if (p.k === 'pet') {
+    const pl = w.players[p.pid] || (w.players[p.pid] = { inv: {} });
+    pl.pet = p.v;
+  } else if (p.k === 'museum') {
+    (w.museum || (w.museum = {}))[p.item] = p.who || '🙂';
   } else if (p.k === 'vil') {
     (w.villagers || (w.villagers = {}))[p.id] = p.v;
   } else if (p.k === 'inv') {

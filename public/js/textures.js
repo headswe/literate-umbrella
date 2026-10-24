@@ -26,6 +26,7 @@ const pick = (r, list) => list[Math.floor(r() * list.length)];
 
 const GRASS = ['#7fd35c', '#76cb54', '#86d964', '#6fc24e', '#7fd35c'];
 const DIRT = ['#9b6b45', '#8f6140', '#a5754d', '#86593a'];
+const ROAD = ['#b98a5c', '#b08254', '#c1956a', '#a87b4f'];
 const SAND = ['#f3dc94', '#efd486', '#f6e2a2', '#e9cd7f'];
 const STONE = ['#a3abb5', '#98a0aa', '#b0b8c1', '#8d959f'];
 const LEAF = ['#4fae4a', '#5cbf52', '#459f42', '#63c759'];
@@ -37,6 +38,7 @@ export function makeTextures() {
     grassSide: paint(2, (x, y, r) => (y < 3 || (y === 3 && r() < 0.5) ? pick(r, GRASS) : pick(r, DIRT))),
     dirt: paint(3, (x, y, r) => pick(r, DIRT)),
     sand: paint(4, (x, y, r) => pick(r, SAND)),
+    road: paint(13, (x, y, r) => (r() < 0.08 ? '#c9a57a' : pick(r, ROAD))),
     stone: paint(5, (x, y, r) => pick(r, STONE)),
     bark: paint(6, (x, y, r) => (x % 4 === 0 ? '#6e4527' : r() < 0.5 ? '#8a5a34' : '#7d5130')),
     logTop: paint(7, (x, y) => {

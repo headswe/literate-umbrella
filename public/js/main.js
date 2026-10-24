@@ -1,11 +1,12 @@
 // Boot, game loop, input and HUD.
-import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS } from './data.js';
+import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES, COLLECTION, daylight, PETS, ROOF_COLORS, WALL_COLORS, ROOM_SIZE, ROOM_CATS } from './data.js';
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
 import { connect } from './net.js';
 import * as p2p from './p2p.js';
 import { speak, stopSpeaking, unlockSpeech, isSpeaking } from './speech.js';
 import { Renderer3D } from './render3d.js';
 import { findPath } from './path.js';
+import { key } from './worldgen.js';
 import { sfx, unlockAudio, setMuted, isMuted } from './audio.js';
 import * as store from './storage.js';
 
@@ -14,9 +15,14 @@ const canvas = $('game');
 const renderer = new Renderer3D(canvas, $('overlay'));
 
 const SPEED = 3.6; // tiles per second
+const FAST = 1.6;   // how much faster you run after eating
+const speed = () => SPEED * (me.boost > Date.now() ? FAST : 1);
 const ACT_COOLDOWN = 300;
 
-let world = null;     // the world being shown
+let world = null;     // the world being shown: the island, or the inside of a house
+let island = null;    // the island itself
+let inside = null;    // key of the house we are in, if any
+let outside = null;   // where to stand when coming out again
 let sim = null;       // only in single player; the server runs it on shared islands
 let net = null;       // connection to the island server, when there is one
 let shared = null;    // id of the shared island we are on
@@ -29,6 +35,7 @@ let dirty = false;
 let lastSave = 0;
 let marker = null;
 let hintShown = true;
+let terrainDirty = false; // dug or filled ground waiting to be redrawn
 
 const profile = store.loadProfile();
 const kindOf = (a) => (AVATARS.find((v) => v.id === a || v.icon === a) || AVATARS[0]).id;
@@ -36,6 +43,7 @@ if (!profile.id) profile.id = 'p' + Math.random().toString(36).slice(2, 10);
 const me = {
   id: profile.id, x: 0, y: 0, z: 1, kind: kindOf(profile.avatar), name: profile.name || '',
   angle: 0, moving: false, path: null, action: null, swing: 0, nextAct: 0, sel: 'hand', rot: 0,
+  wave: 0, waveN: 0, // waving until this time; waveN counts waves so friends' screens notice a new one
 };
 const inv = () => world.players[me.id].inv;
 
@@ -141,9 +149,9 @@ function onNet(m) {
     if (playing && r) toast(`${r.name || 'En kompis'} gick hem`);
   } else if (m.t === 'pos') {
     const r = remotes.get(m.id);
-    if (r) Object.assign(r, m);
+    if (r) { sawWave(r, m.waveN); Object.assign(r, m); }
   } else if (m.t === 'patches' && playing && shared) {
-    for (const p of m.ps) applyPatch(world, p);
+    for (const p of m.ps) applyPatch(island, p);
     handle(m.ps);
   }
 }
@@ -201,7 +209,7 @@ function stopHosting() {
 function showInvite() {
   const pill = $('inviteCode');
   pill.hidden = !hosting;
-  $('inviteBtn').hidden = !!shared;
+  $('inviteBtn').hidden = !!shared || !!inside;
   $('inviteBtn').setAttribute('aria-pressed', String(!!hosting));
   if (!hosting) return;
   const n = guests.size;
@@ -218,7 +226,7 @@ function onGuest(conn, m) {
     ensurePlayer(world, p.id, { name: p.name, kind: p.kind });
     dirty = true;
     const others = [myInfo(), ...[...guests.values()].filter((g) => g !== p).map((g) => ({ ...g, ...remotes.get(g.id) }))];
-    hosting.send(conn, { t: 'joined', save: toSave(world), others });
+    hosting.send(conn, { t: 'joined', save: toSave(island), others });
     hosting.broadcast({ t: 'hi', p }, conn);
     remotes.set(p.id, { ...p, x: world.spawn.x, y: world.spawn.y, z: 1, rx: world.spawn.x, ry: world.spawn.y });
     toast(`${p.name || 'En kompis'} kom till ön! 👋`);
@@ -231,9 +239,9 @@ function onGuest(conn, m) {
   if (m.t === 'act' && m.a && typeof m.a === 'object') {
     share(sim.act({ ...m.a, by: p.id }));
   } else if (m.t === 'pos') {
-    const pos = { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0 };
+    const pos = { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0, waveN: +m.waveN || 0, room: String(m.room || '') };
     const r = remotes.get(p.id);
-    if (r) Object.assign(r, pos);
+    if (r) { sawWave(r, pos.waveN); Object.assign(r, pos); }
     const pl = world.players[p.id];
     if (pl) { pl.x = pos.x; pl.y = pos.y; }
     hosting.broadcast({ t: 'pos', id: p.id, ...pos }, conn);
@@ -315,7 +323,8 @@ $('newWorld').onclick = () => {
 
 // A slowly turning demo island behind the title card.
 function showDemo() {
-  world = loadWorld(newWorldSave('demo', 20261024));
+  world = island = loadWorld(newWorldSave('demo', 20261024));
+  inside = null;
   sim = null;
   playing = false;
   renderer.setWorld(world);
@@ -326,7 +335,8 @@ function startGame(save, onServer = false) {
   unlockAudio();
   saveProfile();
   if (!onServer) { shared = null; remotes.clear(); }
-  world = loadWorld(save);
+  world = island = loadWorld(save);
+  inside = null;
   sim = onServer ? null : new Sim(world);
   renderer.setWorld(world);
   const pl = ensurePlayer(world, me.id, { name: me.name, kind: me.kind });
@@ -347,6 +357,12 @@ function startGame(save, onServer = false) {
   $('bagSheet').hidden = true;
   $('buildSheet').hidden = true;
   $('talkSheet').hidden = true;
+  $('cookSheet').hidden = true;
+  $('museumSheet').hidden = true;
+  $('mailSheet').hidden = true;
+  $('houseSheet').hidden = true;
+  showPlace();
+  me.boost = 0;
   ensureThumbs();
   vilPos.clear();
   renderInventory();
@@ -355,9 +371,10 @@ function startGame(save, onServer = false) {
 }
 
 function save() {
-  if (!playing || !world || shared) return;
-  Object.assign(world.players[me.id], { x: me.x, y: me.y, sel: me.sel });
-  store.storeSave(toSave(world));
+  if (!playing || !island || shared) return;
+  const at = inside ? outside : me;
+  Object.assign(island.players[me.id], { x: at.x, y: at.y, sel: me.sel });
+  store.storeSave(toSave(island));
   dirty = false;
 }
 
@@ -380,8 +397,9 @@ $('muteBtn').onclick = () => {
 };
 $('zoomIn').onclick = () => renderer.zoomBy(1.2);
 $('zoomOut').onclick = () => renderer.zoomBy(1 / 1.2);
-$('rotL').onclick = () => renderer.rotate(-1);
-$('rotR').onclick = () => renderer.rotate(1);
+// Indoors the camera stays put so the walls never hide the room.
+$('rotL').onclick = () => { if (!inside) renderer.rotate(-1); };
+$('rotR').onclick = () => { if (!inside) renderer.rotate(1); };
 window.addEventListener('pagehide', save);
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
@@ -390,7 +408,8 @@ const iconHTML = (id) => {
   const it = ITEMS[id];
   return `<span class="ic" aria-hidden="true">${it.svg || it.icon}</span>`;
 };
-const usable = (id) => ITEMS[id].kind === 'tool' || ITEMS[id].kind === 'seed';
+const AUTO_TOOLS = ['axe', 'pickaxe', 'rod', 'net'];
+const usable = (id) => ['tool', 'seed', 'place'].includes(ITEMS[id].kind);
 
 // Hotbar: hand, tools and seeds you have. Materials live in the backpack.
 function renderInventory() {
@@ -398,15 +417,26 @@ function renderInventory() {
   if (ITEMS[me.sel] && me.sel !== 'hand' && !bag[me.sel]) me.sel = 'hand';
   const bar = $('hotbar');
   bar.innerHTML = '';
-  for (const id of ITEM_ORDER) {
-    if (!usable(id) || (id !== 'hand' && !bag[id])) continue;
+  // Keep the bar short enough for a phone: tools that are picked by themselves (axe, pickaxe,
+  // rod, net) only show while in use, and all seeds share one slot.
+  const seeds = ITEM_ORDER.filter((id) => ITEMS[id].kind === 'seed' && bag[id]);
+  if (ITEMS[me.sel]?.kind === 'seed') me.seed = me.sel;
+  const seed = seeds.includes(me.seed) ? me.seed : seeds[0];
+  const slots = ['hand'];
+  if (AUTO_TOOLS.includes(me.sel)) slots.push(me.sel);
+  for (const id of ['hoe', 'shovel']) if (bag[id]) slots.push(id);
+  if (seed) slots.push(seed);
+  if (bag.dirt) slots.push('dirt');
+  for (const id of slots) {
     const b = document.createElement('button');
     b.className = 'slot';
     b.dataset.id = id;
     b.setAttribute('aria-label', ITEMS[id].name);
     b.setAttribute('aria-pressed', String(me.sel === id));
-    b.innerHTML = iconHTML(id) + (ITEMS[id].kind === 'seed' ? `<span class="n">${bag[id]}</span>` : '');
-    b.onclick = () => select(id);
+    const many = id === seed && seeds.length > 1 ? '<span class="more">⇄</span>' : '';
+    b.innerHTML = iconHTML(id) + (ITEMS[id].kind === 'seed' || ITEMS[id].kind === 'place' ? `<span class="n">${bag[id]}</span>` : '') + many;
+    // Tapping the seed slot again switches to the next kind of seed.
+    b.onclick = () => (id === seed && me.sel === seed && seeds.length > 1 ? select(seeds[(seeds.indexOf(seed) + 1) % seeds.length]) : select(id));
     bar.appendChild(b);
   }
   // Build button, plus the thing you are building right now.
@@ -443,7 +473,7 @@ function renderInventory() {
 function renderBag() {
   const bag = inv();
   const use = $('bagUse'), things = $('bagThings');
-  use.innerHTML = ''; things.innerHTML = '';
+  use.innerHTML = ''; things.innerHTML = ''; $('bagFood').innerHTML = '';
   for (const id of ITEM_ORDER) {
     const n = id === 'hand' ? 1 : bag[id] || 0;
     if (!n) continue;
@@ -456,12 +486,41 @@ function renderBag() {
       b.setAttribute('aria-pressed', String(me.sel === id));
       b.onclick = () => { select(id); closeBag(); };
       use.appendChild(b);
+    } else if (ITEMS[id].eat) {
+      b.onclick = () => { act({ type: 'eat', item: id, by: me.id }); closeBag(); };
+      $('bagFood').appendChild(b);
     } else {
       b.disabled = true;
       things.appendChild(b);
     }
   }
+  $('bagFoodWrap').hidden = !$('bagFood').children.length;
+  renderPets();
   if (!things.children.length) things.innerHTML = '<p class="small-note">Tomt än så länge. Samla trä, sten och blommor!</p>';
+}
+
+// Pick a pet. Tapping the one you have lets you give it a new name.
+function renderPets() {
+  const list = $('bagPets'), mine = world.players[me.id]?.pet;
+  list.innerHTML = '';
+  $('petNote').textContent = mine ? `${mine.name} följer med dig. Tryck på ${mine.name} igen för att byta namn.` : 'Välj ett husdjur som följer med dig!';
+  for (const [kind, def] of Object.entries(PETS)) {
+    const b = document.createElement('button');
+    b.className = 'bag-item';
+    const chosen = mine?.kind === kind;
+    b.innerHTML = '<span class="ic"></span><span></span>';
+    b.children[0].textContent = def.icon;
+    b.children[1].textContent = chosen ? mine.name : def.name;
+    b.setAttribute('aria-pressed', String(chosen));
+    b.onclick = () => {
+      if (chosen) {
+        const name = (prompt('Vad ska ditt husdjur heta?', mine.name) || '').trim();
+        if (name && name !== mine.name) act({ type: 'adopt', kind, name, by: me.id });
+      } else act({ type: 'adopt', kind, by: me.id });
+      closeBag();
+    };
+    list.appendChild(b);
+  }
 }
 
 // ---------------------------------------------------------------- build menu
@@ -489,6 +548,7 @@ function renderBuild() {
   const list = $('buildList');
   list.innerHTML = '';
   for (const cat of BUILD_CATS) {
+    if (inside && !ROOM_CATS.includes(cat.id)) continue;
     const h = document.createElement('p');
     h.className = 'label';
     h.textContent = cat.name;
@@ -524,11 +584,15 @@ $('bagSheet').addEventListener('pointerdown', (e) => { if (e.target === $('bagSh
 function select(id) {
   me.sel = id;
   sfx.pop();
-  for (const b of $('hotbar').children) if (b.dataset.id) b.setAttribute('aria-pressed', String(b.dataset.id === id));
+  renderInventory();
   $('rotBuild').hidden = !id.startsWith('build:');
   if (hintShown) { hintShown = false; $('hint').hidden = true; }
-  const tips = { hoe: 'Tryck på gräset för att göra jord', axe: 'Tryck på ett träd för att hugga', pickaxe: 'Tryck på en sten för att hacka', pickup: 'Tryck på något du byggt för att plocka upp det' };
-  if (ITEMS[id]?.kind === 'seed') toast('Tryck på jorden för att plantera');
+  const tips = {
+    hoe: 'Tryck på gräset för att göra jord', axe: 'Tryck på ett träd för att hugga', pickaxe: 'Tryck på en sten för att hacka',
+    shovel: 'Tryck på gräset för en väg, eller på ett X', dirt: 'Tryck för att fylla ett hål eller bygga en kulle',
+    rod: 'Tryck på vattnet för att fiska', net: 'Tryck på ett litet djur för att fånga det', pickup: 'Tryck på något du byggt för att plocka upp det',
+  };
+  if (ITEMS[id]?.kind === 'seed') toast(`${ITEMS[id].name}: tryck på jorden för att plantera`);
   else if (id.startsWith('build:')) toast('Tryck där du vill bygga');
   else if (tips[id]) toast(tips[id]);
 }
@@ -555,6 +619,7 @@ function toast(text) {
 const BURST = { tree: '#5cbf52', pine: '#2f8a52', fruittree: '#e8473d', rock: '#b4bcc4', flower: '#ff7eb6', shell: '#ffb3c1' };
 const SAY = {
   noapples: 'Inga äpplen just nu 🍎 Hugg med yxan 🪓?',
+  noberries: 'Inga blåbär just nu 🫐 De växer tillbaka snart!',
   needsoil: 'Gör jord först med jordhackan',
   needtool: 'Du behöver rätt verktyg',
   occupied: 'Här står redan något',
@@ -563,10 +628,19 @@ const SAY = {
 function handle(patches) {
   for (const p of patches) {
     if (p.k === 'obj') { dirty = true; renderer.markDirty(); }
+    if (p.k === 'tile') { dirty = true; terrainDirty = true; }
     if (p.k === 'inv') { dirty = true; if (p.pid === me.id) bump(p.item); }
+    if (p.k === 'pet') dirty = true;
+    if (p.k === 'room') { dirty = true; if (p.house === inside) refreshRoom(); }
+    if (p.k === 'obj' && inside && p.key === inside) {
+      dirty = true;
+      if (!p.v || p.v.id !== 'house') { leaveHouse(); toast('Huset är borta!'); } else if (p.v.wall !== world.wallColor) enterHouse(inside, true);
+    }
     if (p.k !== 'fx') continue;
     const z = heightAt(world, p.x, p.y);
     const mine = p.by === me.id;
+    // Something happening in another place (a house, or outside) is not drawn here.
+    if (p.x !== undefined && (p.house || null) !== inside && (p.fx === 'grown' || (!mine && p.fx !== 'movein'))) continue;
     switch (p.fx) {
       case 'gain': {
         const show = () => renderer.floatText(p.x, p.y, z, ITEMS[p.item].svg ? '🌱' : ITEMS[p.item].icon, '+' + p.n);
@@ -590,6 +664,117 @@ function handle(patches) {
       case 'break':
         renderer.burst(p.x, p.y, z, '#b4bcc4', 20);
         if (mine) sfx.crumble();
+        break;
+      case 'fish': {
+        // Cast: a bobber goes out, then something bites.
+        renderer.floatText(p.x, p.y, 0.4, '🎣', '');
+        if (mine) sfx.pop();
+        setTimeout(() => {
+          renderer.burst(p.x, p.y, 0.6, '#bfe8ff', 18);
+          renderer.floatText(p.x, p.y, 0.8, ITEMS[p.item].icon, '+1');
+          if (mine) { sfx.gain(); toast(p.item === 'puffer' ? 'En blåsfisk! 🐡 Så ovanlig!' : p.item === 'goldfish' ? 'En guldfisk! 🐠' : 'Du fick en fisk! 🐟'); }
+        }, p.delay);
+        break;
+      }
+      case 'caught':
+        renderer.burst(p.x, p.y, z + 0.5, '#fff7b0', 14);
+        renderer.floatText(p.x, p.y, z + 0.4, ITEMS[p.item].icon, '+1');
+        if (mine) { sfx.gain(); toast(`Du fångade ${ITEMS[p.item].one}! ${ITEMS[p.item].icon}`); }
+        break;
+      case 'adopted':
+        if (mine) {
+          const pet = PETS[p.kind];
+          sfx.gain();
+          const name = world.players[me.id].pet.name;
+          toast(p.renamed ? `${pet.icon} Nu heter den ${name}!` : `${pet.icon} ${name} är din nya kompis! Den följer med dig överallt.`);
+          setTimeout(() => petSay(me.id, pet.sound), 600);
+        }
+        break;
+      case 'petfound': {
+        const pp = petPos.get(p.by);
+        if (pp) {
+          renderer.floatText(pp.x - 0.5, pp.y - 0.5, pp.z + 0.2, ITEMS[p.item].svg ? '🌱' : ITEMS[p.item].icon, '+1');
+          pp.hop = Date.now() + 400;
+        }
+        if (mine) {
+          sfx.gain();
+          const pet = world.players[me.id].pet;
+          toast(`${pet.name} hittade ${ITEMS[p.item].one || ITEMS[p.item].name.toLowerCase()}! ${ITEMS[p.item].icon || '🌱'}`);
+          petSay(me.id, PETS[pet.kind].sound);
+        }
+        break;
+      }
+      case 'mail':
+        if (mine) {
+          sfx.gain();
+          toast(`${VIL[p.from]?.name || 'En kompis'} har skickat ett brev till dig! ✉️ Titta i brevlådan.`);
+          if (!$('mailSheet').hidden) renderMail();
+        }
+        break;
+      case 'mailopened':
+        if (mine) {
+          if (p.item) { sfx.gain(); renderer.floatText(me.x - 0.5, me.y - 0.5, me.z + 0.5, ITEMS[p.item].svg ? '🌱' : ITEMS[p.item].icon, '+1'); }
+          if (!$('mailSheet').hidden) renderMail();
+        }
+        break;
+      case 'painted':
+        renderer.burst(p.x + 0.5, p.y + 0.5, z + 1.6, '#ffffff', 14);
+        if (mine) { sfx.build(); if (houseAt) renderHouse(); }
+        break;
+      case 'donated':
+        renderer.burst(p.x + 0.5, p.y + 0.5, z + 1.5, '#ffd23f', 24);
+        if (mine) { sfx.grow(); toast(`Tack! Nu finns ${ITEMS[p.item].one} på museet ⭐`); }
+        if (museumAt) renderMuseum();
+        break;
+      case 'cooked':
+        renderer.burst(p.x, p.y, z + 0.6, '#ffb347', 16);
+        renderer.floatText(p.x, p.y, z + 0.4, ITEMS[p.item].icon, '+1');
+        if (mine) { sfx.build(); renderCook(); }
+        break;
+      case 'ate': {
+        const who = p.by === me.id ? me : remotes.get(p.by);
+        if (who) renderer.floatText((who.rx ?? who.x) - 0.5, (who.ry ?? who.y) - 0.5, (who.z || 1) + 0.4, '😋', '');
+        if (mine) {
+          me.boost = Date.now() + p.secs * 1000;
+          me.swing = Date.now() + 300;
+          sfx.grow();
+          toast(`Mums! ${ITEMS[p.item].icon} Nu springer du jättesnabbt en stund! 🏃`);
+        }
+        break;
+      }
+      case 'treated': {
+        const vp = vilPos.get(p.vid);
+        if (vp) { vp.swing = Date.now() + 400; renderer.burst(vp.x - 0.5, vp.y - 0.5, vp.z + 0.5, '#ff7eb6', 16); renderer.floatText(vp.x - 0.5, vp.y - 0.5, vp.z, '❤️', '+1'); }
+        if (mine) {
+          sfx.gain();
+          say(p.vid, pick(['Mums! Tack så mycket!', `Åh, ${ITEMS[p.item].one}! Min favorit!`, 'Smaskens! Du är snäll!']));
+          if (talking === p.vid) { $('talkHearts').textContent = '❤️'.repeat(Math.min(10, world.villagers[p.vid].hearts)); updateTreat(); }
+        }
+        break;
+      }
+      case 'full':
+        if (mine) { sfx.nope(); say(p.vid, 'Jag är så mätt nu. Tack ändå! Kom tillbaka sen.'); }
+        break;
+      case 'road':
+        renderer.burst(p.x, p.y, z - 0.1, '#b98a5c', 12);
+        if (mine) sfx.dig();
+        break;
+      case 'dig':
+        renderer.burst(p.x, p.y, z + 0.4, '#8f6140', 14);
+        renderer.floatText(p.x, p.y, z + 0.5, '🟫', '+1');
+        if (mine) sfx.dig();
+        break;
+      case 'fill':
+        renderer.burst(p.x, p.y, z - 0.2, '#6fc24e', 12);
+        if (mine) sfx.build();
+        break;
+      case 'toohigh':
+        if (mine) { sfx.nope(); toast('Högre än så går det inte'); }
+        break;
+      case 'treasure':
+        renderer.burst(p.x, p.y, z + 0.2, '#ffd23f', 36);
+        renderer.floatText(p.x, p.y, z + 0.6, '⭐', '+' + p.n);
+        if (mine) { sfx.grow(); setTimeout(sfx.gain, 200); toast(`Du hittade en skatt! ⭐⭐ och ${amount(p.loot, 1)}`); }
         break;
       case 'till':
         renderer.burst(p.x, p.y, z - 0.6, '#6b4329', 12);
@@ -683,6 +868,13 @@ function goTalk(vid) {
 }
 
 function doAct(tx, ty, what) {
+  if (what.type === 'cookmenu') { face(tx + 0.5 - me.x, ty + 0.5 - me.y); openCook(tx, ty); return; }
+  if (what.type === 'housemenu') { face(tx + 1 - me.x, ty + 1 - me.y); openHouse(tx, ty); return; }
+  if (what.type === 'leavehouse') { leaveHouse(); return; }
+  if (inside && what.type === 'build') what = { ...what, type: 'roomput', house: inside };
+  if (inside && what.type === 'pickup') what = { ...what, type: 'roomtake', house: inside };
+  if (what.type === 'mailmenu') { face(tx + 0.5 - me.x, ty + 0.5 - me.y); openMail(); return; }
+  if (what.type === 'museummenu') { face(tx + 1 - me.x, ty + 1 - me.y); openMuseum(tx, ty); return; }
   if (what.type === 'talk') {
     const v = world.villagers[what.vid];
     face(v.x - me.x, v.y - me.y);
@@ -691,7 +883,7 @@ function doAct(tx, ty, what) {
   }
   const t = performance.now();
   if (t < me.nextAct) return;
-  me.nextAct = t + ACT_COOLDOWN;
+  me.nextAct = t + (what.item === 'rod' ? 2600 : ACT_COOLDOWN);
   face(tx + 0.5 - me.x, ty + 0.5 - me.y);
   me.swing = Date.now() + 200;
   act({ ...what, x: tx, y: ty, by: me.id });
@@ -707,16 +899,27 @@ function goAct(x, y, act) {
 }
 const goUse = (x, y, item) => goAct(x, y, { type: 'use', item });
 
+// Digging or filling the tile you stand on: step next to it first, so you don't end up in a pond.
+function goShape(x, y, item) {
+  if (Math.floor(me.x) !== x || Math.floor(me.y) !== y) return goUse(x, y, item);
+  const path = findPath(world, x, y, (ax, ay) => (ax !== x || ay !== y) && Math.abs(ax - x) <= 1 && Math.abs(ay - y) <= 1, x, y);
+  if (!path) { sfx.nope(); return; }
+  me.path = path; me.action = { x, y, act: { type: 'use', item } }; marker = { x, y };
+}
+
 function tapAt(sx, sy) {
   if (!playing) return;
   const actor = renderer.pickActor(sx, sy);
   if (actor && actor.startsWith('v:')) return goTalk(actor.slice(2));
+  if (actor && actor.startsWith('pet:')) return patPet(actor.slice(4));
   const hit = renderer.pick(sx, sy);
   if (!hit) return;
   let { x, y, obj } = hit;
   if (obj && obj.type === 'part') { [x, y] = obj.of.split(',').map(Number); obj = world.objects[obj.of]; }
   const sel = me.sel;
   const kind = ITEMS[sel]?.kind;
+
+  if (inside) return tapInside(x, y, obj, sel);
 
   // Building: place the chosen thing, or pick things up again.
   if (sel.startsWith('build:')) {
@@ -730,6 +933,20 @@ function tapAt(sx, sy) {
   if (sel === 'pickup') {
     if (obj && obj.type === 'build') return goAct(x, y, { type: 'pickup' });
   }
+
+  // The spade digs treasure, roads and ponds; earth fills holes and builds hills.
+  if (obj && obj.type === 'buried' && inv().shovel) { if (sel !== 'shovel') select('shovel'); return goShape(x, y, 'shovel'); }
+  if (sel === 'shovel' && (!obj || obj.type === 'flower') && !hit.water) return goShape(x, y, 'shovel');
+  if (kind === 'place' && (!obj || obj.type === 'flower' || obj.type === 'shell')) return goShape(x, y, sel);
+  if (hit.water) {
+    if (!inv().rod) { sfx.nope(); return; }
+    if (sel !== 'rod') select('rod');
+    return goUse(x, y, 'rod');
+  }
+  if (obj && obj.type === 'build' && obj.id === 'campfire' && !sel.startsWith('build:') && sel !== 'pickup') return goAct(x, y, { type: 'cookmenu' });
+  if (obj && obj.type === 'build' && obj.id === 'museum' && !sel.startsWith('build:') && sel !== 'pickup') return goMuseum(x, y);
+  if (obj && obj.type === 'build' && obj.id === 'house' && !sel.startsWith('build:') && sel !== 'pickup') return goBig(x, y, { type: 'housemenu' });
+  if (obj && obj.type === 'build' && obj.id === 'mailbox' && !sel.startsWith('build:') && sel !== 'pickup') return goAct(x, y, { type: 'mailmenu' });
 
   // Seeds go in soil, the hoe works on grass.
   if (kind === 'seed' && obj && obj.type === 'soil') return goUse(x, y, sel);
@@ -755,7 +972,7 @@ let lastPos = 0, lastSent = '';
 function sendPos(t) {
   if (t - lastPos < 100) return;
   lastPos = t;
-  const msg = { t: 'pos', x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), angle: +me.angle.toFixed(2), moving: me.moving, swing: me.swing };
+  const msg = { t: 'pos', x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), angle: +me.angle.toFixed(2), moving: me.moving, swing: me.swing, waveN: me.waveN, room: inside || '' };
   const sig = JSON.stringify(msg);
   if (sig === lastSent && !me.moving) return;
   lastSent = sig;
@@ -763,13 +980,71 @@ function sendPos(t) {
   else link.send(msg);
 }
 
+// ---------------------------------------------------------------- pets
+// Each player's pet trots after them. Where it is only matters on this screen.
+const petPos = new Map(); // player id -> {x, y, z, angle, moving, hop, sayText, sayUntil}
+function petActors(dt, owners) {
+  const out = [];
+  const now = Date.now();
+  for (const o of owners) {
+    const pet = world.players[o.pid]?.pet;
+    if (!pet) { petPos.delete(o.pid); continue; }
+    let p = petPos.get(o.pid);
+    if (!p) { p = { x: o.x - 0.8, y: o.y - 0.8, z: o.z, angle: 0 }; petPos.set(o.pid, p); }
+    const dx = o.x - p.x, dy = o.y - p.y, d = Math.hypot(dx, dy);
+    p.moving = false;
+    if (d > 9) { p.x = o.x - 0.8; p.y = o.y - 0.8; }
+    else if (d > 1.3) {
+      // Faster the further behind it is, so it never gets lost.
+      const step = Math.min(d - 1.1, (SPEED * 1.15 + (d - 1.3) * 1.5) * dt);
+      const nx = p.x + dx / d * step, ny = p.y + dy / d * step;
+      // Hop over water and blocked tiles rather than getting stuck: pets are nimble.
+      p.x = nx; p.y = ny;
+      p.angle = Math.atan2(dx, dy);
+      p.moving = true;
+    }
+    const gz = Math.max(0.85, heightAt(world, Math.floor(p.x), Math.floor(p.y)));
+    p.z = (p.z ?? gz) + (gz - (p.z ?? gz)) * Math.min(1, dt * 12);
+    const bubble = p.sayUntil > now ? `<span class="say">${escapeHtml(p.sayText)}</span>` : '';
+    out.push({ id: 'pet:' + o.pid, kind: pet.kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving: p.moving, name: pet.name, bubble, swing: p.hop, scale: 0.55 });
+  }
+  return out;
+}
+
+function petSay(pid, text) {
+  const p = petPos.get(pid);
+  if (p) { p.sayText = text; p.sayUntil = Date.now() + 2200; p.hop = Date.now() + 400; }
+  speak(text, { pitch: 1.9, rate: 1.2 }, true);
+}
+
+// Patting a pet: it hops, makes its sound and hearts pop up.
+function patPet(pid) {
+  const pet = world.players[pid]?.pet, p = petPos.get(pid);
+  if (!pet || !p) return;
+  p.angle = Math.atan2(me.x - p.x, me.y - p.y);
+  p.lookAt = Date.now() + 2000;
+  renderer.floatText(p.x - 0.5, p.y - 0.5, p.z + 0.1, '💕', '');
+  sfx.pop();
+  petSay(pid, PETS[pet.kind].sound);
+}
+
+// Ask for the pet's present when it is due. The sim checks the time itself.
+let petAsk = 0;
+function petCheck(now) {
+  const pet = world.players[me.id]?.pet;
+  if (!pet || pet.findAt > now || now < petAsk) return;
+  petAsk = now + 5000;
+  act({ type: 'petfind', by: me.id });
+}
+
 function remoteActors(dt) {
   const out = [];
   for (const r of remotes.values()) {
+    if ((r.room || '') !== (inside || '')) continue;
     const k = Math.min(1, dt * 12);
     r.rx += (r.x - r.rx) * k; r.ry += (r.y - r.ry) * k;
     if (Math.hypot(r.x - r.rx, r.y - r.ry) > 4) { r.rx = r.x; r.ry = r.y; }
-    out.push({ id: 'p:' + r.id, kind: r.kind, x: r.rx, y: r.ry, z: r.z, angle: r.angle, moving: r.moving, name: r.name || '🙂', swing: r.swing });
+    out.push({ id: 'p:' + r.id, kind: r.kind, x: r.rx, y: r.ry, z: r.z, angle: r.angle, moving: r.moving, name: r.name || '🙂', swing: r.swing, wave: r.wave });
   }
   return out;
 }
@@ -800,7 +1075,7 @@ function villagerActors(dt) {
     p.z = (p.z ?? heightAt(world, Math.floor(p.x), Math.floor(p.y)));
     p.z += (heightAt(world, Math.floor(p.x), Math.floor(p.y)) - p.z) * Math.min(1, dt * 12);
     const bubble = p.sayUntil > Date.now() ? `<span class="say">${escapeHtml(p.sayText)}</span>` : wishBubble(v);
-    out.push({ id: 'v:' + v.id, kind: VIL[v.id].kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving, name: VIL[v.id].name, bubble, swing: p.swing });
+    out.push({ id: 'v:' + v.id, kind: VIL[v.id].kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving: moving && !(p.wave > Date.now()), name: VIL[v.id].name, bubble, swing: p.swing, wave: p.wave });
   }
   return out;
 }
@@ -833,6 +1108,8 @@ const GREET = {
   cat: ['Mjau! Hej {namn}!', 'Hej {namn}. Jag tog just en tupplur.'],
 };
 const CHAT = ['Vilket fint väder idag!', 'Jag tycker om vår ö.', 'Tryck på mig om du vill prata!', 'Har du sett blommorna?', 'Du är en bra kompis!'];
+const NIGHT_HELLO = ['God kväll {namn}!', 'Hej {namn}! Ser du stjärnorna?', 'Hej {namn}! Jag är lite sömnig...', 'Gääsp! Hej {namn}.'];
+const NIGHT_CHAT = ['Titta så många stjärnor!', 'Lyktorna är så mysiga.', 'Snart är det morgon igen.', 'Sov gott sen!'];
 const BYE = ['Hej då!', 'Vi ses!', 'Hej då, kom snart tillbaka!', 'Ha det så bra!'];
 const greetAt = new Map();  // villager id -> when they may greet again
 let nextChat = 0;           // nobody starts chatting before this
@@ -844,15 +1121,82 @@ function say(vid, text, polite = false) {
   speak(text, VIL[vid].voice, polite);
 }
 
+// ---------------------------------------------------------------- waving
+const WAVE_MS = 1800;
+
+function doWave() {
+  if (!playing) return;
+  const now = Date.now();
+  if (me.wave > now) return;
+  me.wave = now + WAVE_MS;
+  me.waveN++;
+  me.path = null; marker = null;
+  sfx.pop();
+  renderer.floatText(me.x - 0.5, me.y - 0.5, me.z + 0.6, '👋', '');
+  // Friends nearby wave back, the closest one says hello.
+  const near = Object.values(world.villagers || {})
+    .map((v) => ({ v, p: vilPos.get(v.id) }))
+    .filter(({ p }) => p && Math.hypot(p.x - me.x, p.y - me.y) < 8)
+    .sort((a, b) => Math.hypot(a.p.x - me.x, a.p.y - me.y) - Math.hypot(b.p.x - me.x, b.p.y - me.y));
+  near.slice(0, 4).forEach(({ v, p }, i) => setTimeout(() => {
+    p.angle = Math.atan2(me.x - p.x, me.y - p.y);
+    p.wave = Date.now() + WAVE_MS;
+    if (i === 0 && !talking) say(v.id, pick(['Hej hej!', `Hej ${me.name || 'kompis'}!`, 'Hallå där!', 'Hejsan!']));
+  }, 300 + i * 250));
+  nextChat = now + 6000;
+}
+$('waveBtn').onclick = doWave;
+
+// A friend on another device waved: show it here too.
+function sawWave(r, n) {
+  if (n === undefined || n === r.waveN) return;
+  if (r.waveN !== undefined) {
+    r.wave = Date.now() + WAVE_MS;
+    renderer.floatText(r.rx - 0.5, r.ry - 0.5, (r.z || 1) + 0.6, '👋', '');
+  }
+}
+
+// Villagers who meet on their walks wave to each other.
+const metAt = new Map();
+function villagersMeet(now) {
+  const list = [...vilPos.entries()];
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const [ia, a] = list[i], [ib, b] = list[j];
+      const pair = ia < ib ? ia + ib : ib + ia;
+      if (Math.hypot(a.x - b.x, a.y - b.y) > 2.2 || (metAt.get(pair) || 0) > now) continue;
+      metAt.set(pair, now + 45000);
+      a.angle = Math.atan2(b.x - a.x, b.y - a.y);
+      b.angle = Math.atan2(a.x - b.x, a.y - b.y);
+      a.wave = now + WAVE_MS;
+      setTimeout(() => { b.wave = Date.now() + WAVE_MS; }, 350);
+      // Only say it out loud when you are close enough to hear.
+      if (Math.hypot(a.x - me.x, a.y - me.y) < 6) say(ia, `Hej ${VIL[ib].name}!`, true);
+    }
+  }
+}
+
+// Tell the kids when evening comes and when the sun is back.
+let wasNight = null;
+function nightfall(now) {
+  const l = daylight(now);
+  const night = wasNight ? l < 0.6 : l < 0.4;
+  if (night === wasNight) return;
+  if (wasNight !== null) toast(night ? 'Nu blir det kväll 🌙 Lyktor och eldar lyser upp ön.' : 'God morgon! Solen är uppe ☀️');
+  wasNight = night;
+}
+
 // Friends say hello when you walk past, now and then, but never all at once.
 function greetNearby(now) {
   if (now < nextChat || talking || isSpeaking()) return;
   for (const v of Object.values(world.villagers || {})) {
     const p = vilPos.get(v.id);
     if (!p || Math.hypot(p.x - me.x, p.y - me.y) > 2.6 || (greetAt.get(v.id) || 0) > now) continue;
-    const hello = pick(GREET[VIL[v.id].kind] || HELLO).replace('{namn}', me.name || 'kompis');
-    say(v.id, Math.random() < 0.35 ? `${hello} ${pick(CHAT)}` : hello, true);
+    const night = daylight(now) < 0.3;
+    const hello = pick(night ? NIGHT_HELLO : GREET[VIL[v.id].kind] || HELLO).replace('{namn}', me.name || 'kompis');
+    say(v.id, Math.random() < 0.35 ? `${hello} ${pick(night ? NIGHT_CHAT : CHAT)}` : hello, true);
     p.angle = Math.atan2(me.x - p.x, me.y - p.y);
+    p.wave = now + 1600;
     p.swing = now + 300;
     greetAt.set(v.id, now + 60000);
     nextChat = now + 9000;
@@ -876,12 +1220,279 @@ function openTalk(vid) {
     give.disabled = !has;
     give.textContent = has ? `Ge ${v.wish.n} ${ITEMS[v.wish.item].icon}` : `Du har ${inv()[v.wish.item] || 0} av ${v.wish.n} ${ITEMS[v.wish.item].icon}`;
   } else give.hidden = true;
+  updateTreat();
   $('talkSheet').hidden = false;
   speak(text, info.voice);
   greetAt.set(vid, Date.now() + 60000);
   const p = vilPos.get(vid);
   if (p) { p.angle = Math.atan2(me.x - p.x, me.y - p.y); p.swing = Date.now() + 250; }
 }
+
+// ---------------------------------------------------------------- cooking and treats
+let cookAt = null;
+function openCook(x, y) {
+  cookAt = { x, y };
+  renderCook();
+  $('cookSheet').hidden = false;
+}
+function renderCook() {
+  const list = $('cookList');
+  list.innerHTML = '';
+  for (const r of RECIPES) {
+    const b = document.createElement('button');
+    b.className = 'cook-item';
+    const need = Object.entries(r.needs).map(([k, n]) => ITEMS[k].icon.repeat(n)).join(' ');
+    b.innerHTML = `<span class="need"></span><span class="arrow">→</span><span class="out"></span><span class="nm"></span>`;
+    b.children[0].textContent = need;
+    b.children[2].textContent = ITEMS[r.id].icon;
+    b.children[3].textContent = ITEMS[r.id].name;
+    b.disabled = !canAfford(inv(), r.needs);
+    b.onclick = () => cookAt && act({ type: 'cook', recipe: r.id, x: cookAt.x, y: cookAt.y, by: me.id });
+    list.appendChild(b);
+  }
+}
+function closeCook() { $('cookSheet').hidden = true; cookAt = null; }
+$('cookClose').onclick = closeCook;
+$('cookSheet').addEventListener('pointerdown', (e) => { if (e.target === $('cookSheet')) closeCook(); });
+
+// ---------------------------------------------------------------- museum
+let museumAt = null;
+// The museum is 2×2; walk up to any side of it.
+const goMuseum = (x, y) => goBig(x, y, { type: 'museummenu' });
+function goBig(x, y, what) {
+  const goal = (ax, ay) => ax >= x - 1 && ax <= x + 2 && ay >= y - 1 && ay <= y + 2;
+  if (goal(Math.floor(me.x), Math.floor(me.y))) return doAct(x, y, what);
+  const path = findPath(world, Math.floor(me.x), Math.floor(me.y), goal, x, y);
+  if (!path) { sfx.nope(); return; }
+  me.path = path; me.action = { x, y, act: what }; marker = { x, y };
+}
+function openMuseum(x, y) {
+  museumAt = { x, y };
+  renderMuseum();
+  $('museumSheet').hidden = false;
+}
+function renderMuseum() {
+  const list = $('museumList');
+  list.innerHTML = '';
+  const shown = world.museum || {};
+  let done = 0;
+  for (const id of COLLECTION) {
+    const b = document.createElement('button');
+    b.className = 'bag-item museum-item';
+    b.innerHTML = `<span class="ic"></span><span></span><span class="who"></span>`;
+    b.children[0].textContent = ITEMS[id].icon;
+    if (shown[id]) {
+      done++;
+      b.children[1].textContent = ITEMS[id].name;
+      b.children[2].textContent = `från ${shown[id]}`;
+      b.disabled = true;
+    } else if (inv()[id] > 0) {
+      b.classList.add('ready');
+      b.children[1].textContent = ITEMS[id].name;
+      b.children[2].textContent = 'Tryck för att ge';
+      b.onclick = () => museumAt && act({ type: 'donate', item: id, x: museumAt.x, y: museumAt.y, by: me.id });
+    } else {
+      b.classList.add('missing');
+      b.children[1].textContent = '???';
+      b.disabled = true;
+    }
+    list.appendChild(b);
+  }
+  $('museumNote').textContent = done === COLLECTION.length
+    ? 'Museet är fullt! Vilka fina fynd! 🎉'
+    : `${done} av ${COLLECTION.length} på museet. Ge en av varje fisk och småkryp, så får du en ⭐ för varje ny!`;
+}
+function closeMuseum() { $('museumSheet').hidden = true; museumAt = null; }
+$('museumClose').onclick = closeMuseum;
+$('museumSheet').addEventListener('pointerdown', (e) => { if (e.target === $('museumSheet')) closeMuseum(); });
+
+// ---------------------------------------------------------------- letters
+const myMail = () => world.players[me.id]?.mail || [];
+let reading = null;
+function openMail() {
+  reading = null;
+  renderMail();
+  $('mailSheet').hidden = false;
+  sfx.pop();
+}
+function renderMail() {
+  const list = $('mailList'), letter = myMail().find((m) => m.id === reading);
+  list.innerHTML = '';
+  $('mailLetter').hidden = !letter;
+  list.hidden = !!letter;
+  $('mailNote').hidden = !!letter;
+  if (letter) {
+    const info = VIL[letter.from];
+    $('mailFrom').textContent = `Från ${info?.name || 'en kompis'}`;
+    $('mailText').textContent = letter.text;
+    $('mailGift').textContent = letter.gift ? `Presenten: ${ITEMS[letter.gift].icon || '🌱'} ${ITEMS[letter.gift].name}` : '';
+    return;
+  }
+  const mail = myMail();
+  $('mailNote').textContent = mail.length ? 'Tryck på ett brev för att läsa det.' : 'Inga brev än. Dina kompisar skriver snart! 💌';
+  for (const m of mail) {
+    const b = document.createElement('button');
+    b.className = 'bag-item mail-item' + (m.read ? '' : ' unread');
+    b.innerHTML = '<span class="ic"></span><span></span><span class="cnt"></span>';
+    b.children[0].textContent = m.read ? '📭' : '💌';
+    b.children[1].textContent = VIL[m.from]?.name || 'Kompis';
+    b.children[2].textContent = m.read ? 'Läst' : 'Nytt!';
+    b.onclick = () => readLetter(m);
+    list.appendChild(b);
+  }
+}
+function readLetter(m) {
+  reading = m.id;
+  if (!m.read) act({ type: 'openmail', id: m.id, by: me.id });
+  renderMail();
+  speak(m.text, VIL[m.from]?.voice);
+}
+function closeMail() { $('mailSheet').hidden = true; reading = null; stopSpeaking(); }
+$('mailClose').onclick = closeMail;
+$('mailBack').onclick = () => { reading = null; stopSpeaking(); renderMail(); };
+$('mailRead').onclick = () => { const m = myMail().find((l) => l.id === reading); if (m) speak(m.text, VIL[m.from]?.voice); };
+$('mailSheet').addEventListener('pointerdown', (e) => { if (e.target === $('mailSheet')) closeMail(); });
+
+// ---------------------------------------------------------------- houses: paint and go inside
+let houseAt = null;
+function openHouse(x, y) {
+  houseAt = { x, y };
+  renderHouse();
+  $('houseSheet').hidden = false;
+  sfx.pop();
+}
+function renderHouse() {
+  const o = island.objects[key(houseAt.x, houseAt.y)];
+  if (!o || o.id !== 'house') { closeHouse(); return; }
+  $('houseTitle').textContent = o.owner ? `${VIL[o.owner].name}s hus` : 'Hus';
+  const swatches = (el, part, colors, current) => {
+    el.innerHTML = '';
+    for (const c of colors) {
+      const b = document.createElement('button');
+      b.className = 'swatch';
+      b.style.background = c;
+      b.setAttribute('aria-label', 'Färg');
+      b.setAttribute('aria-pressed', String(c === current));
+      b.onclick = () => act({ type: 'paint', part, color: c, x: houseAt.x, y: houseAt.y, by: me.id });
+      el.appendChild(b);
+    }
+  };
+  swatches($('roofColors'), 'roof', ROOF_COLORS, o.roof || VIL[o.owner]?.roof);
+  swatches($('wallColors'), 'wall', WALL_COLORS, o.wall || WALL_COLORS[0]);
+}
+function closeHouse() { $('houseSheet').hidden = true; houseAt = null; }
+$('houseClose').onclick = closeHouse;
+$('houseSheet').addEventListener('pointerdown', (e) => { if (e.target === $('houseSheet')) closeHouse(); });
+$('houseEnter').onclick = () => { const h = houseAt; closeHouse(); if (h) enterHouse(key(h.x, h.y)); };
+
+// The inside of a house is a small world of its own: a wooden floor, two walls at the
+// back (the front is open so you can see in) and a doormat to walk out again.
+const DOOR = { x: Math.floor(ROOM_SIZE / 2), y: ROOM_SIZE - 1 };
+// Indoors the camera looks at the middle of the room, so all of it fits on the screen.
+// On a narrow phone it leans towards where you stand instead.
+const ROOM_VIEW = { x: ROOM_SIZE / 2 + 0.3, y: ROOM_SIZE / 2 + 0.3, z: 0.6 };
+function roomFocus() {
+  if (window.innerWidth >= 600) return ROOM_VIEW;
+  return { x: (ROOM_VIEW.x + me.x) / 2, y: (ROOM_VIEW.y + me.y) / 2, z: ROOM_VIEW.z };
+}
+function roomObjects(house) {
+  const objs = { ...(house.room || {}) };
+  objs[key(DOOR.x, DOOR.y)] = { type: 'build', id: 'doormat', rot: 0 };
+  return objs;
+}
+function roomWorld(hk) {
+  const house = island.objects[hk], N = ROOM_SIZE;
+  const terrain = new Uint8Array(N * N), height = new Uint8Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const wall = x === 0 || y === 0;
+    terrain[y * N + x] = wall ? T.WALL : T.FLOOR;
+    height[y * N + x] = wall ? 4 : 1;
+  }
+  return {
+    indoor: true, house: hk, size: N, terrain, height, objects: roomObjects(house),
+    players: island.players, villagers: {}, museum: island.museum, name: island.name,
+    spawn: { x: DOOR.x + 0.5, y: DOOR.y - 0.5 }, wallColor: house.wall || WALL_COLORS[0],
+  };
+}
+function enterHouse(hk, again = false) {
+  if (!island.objects[hk]) return;
+  if (!inside) {
+    const [hx, hy] = hk.split(',').map(Number);
+    outside = { x: hx + 1, y: hy + 2.5 };
+  }
+  inside = hk;
+  world = roomWorld(hk);
+  renderer.setWorld(world);
+  if (!again) {
+    me.x = world.spawn.x; me.y = world.spawn.y; me.z = 1;
+    me.path = null; me.action = null; marker = null;
+    me.angle = Math.PI;
+    renderer.target.set(ROOM_VIEW.x, ROOM_VIEW.z + 0.5, ROOM_VIEW.y);
+    petPos.delete(me.id);
+    sfx.pop();
+    const o = island.objects[hk];
+    toast(o.owner ? `Välkommen in hos ${VIL[o.owner].name}! 🏠 Bygg möbler med 🔨` : 'Välkommen in! 🏠 Bygg möbler med 🔨. Gå ut på mattan.');
+  }
+  renderer.yawTarget = renderer.yaw = Math.PI / 4;
+  showPlace();
+}
+// Indoors the door button takes the place of the invite button.
+function showPlace() {
+  $('exitBtn').hidden = !inside;
+  $('inviteBtn').hidden = !!shared || !!inside;
+}
+$('exitBtn').onclick = () => leaveHouse();
+function leaveHouse() {
+  if (!inside) return;
+  inside = null;
+  world = island;
+  renderer.setWorld(world);
+  me.x = outside.x; me.y = outside.y;
+  if (!isWalkable(world, Math.floor(me.x), Math.floor(me.y))) { me.x = world.spawn.x; me.y = world.spawn.y; }
+  me.z = heightAt(world, Math.floor(me.x), Math.floor(me.y));
+  me.path = null; me.action = null; marker = null;
+  me.angle = 0;
+  renderer.target.set(me.x, me.z, me.y);
+  petPos.delete(me.id);
+  vilPos.clear();
+  sfx.pop();
+  showPlace();
+}
+function refreshRoom() {
+  world.objects = roomObjects(island.objects[inside]);
+  renderer.markDirty();
+}
+function tapInside(x, y, obj, sel) {
+  if (obj && obj.id === 'doormat') return goAct(x, y, { type: 'leavehouse' });
+  if (sel.startsWith('build:')) {
+    const id = sel.slice(6);
+    if (!ROOM_CATS.includes(BUILDS[id].cat)) { sfx.nope(); toast(`${BUILDS[id].name} får inte plats inomhus`); return; }
+    if (!obj || (obj.id === id && BUILDS[id].stack)) {
+      if (!canAfford(inv(), BUILDS[id].cost)) { sfx.nope(); toast(costText(id)); return; }
+      return goAct(x, y, { type: 'build', id, rot: me.rot });
+    }
+    return goAct(x, y, { type: 'pickup' });
+  }
+  if (sel === 'pickup' && obj) return goAct(x, y, { type: 'pickup' });
+  if (!isWalkable(world, x, y)) { sfx.nope(); return; }
+  const path = findPath(world, Math.floor(me.x), Math.floor(me.y), (ax, ay) => ax === x && ay === y, x, y);
+  if (!path) { sfx.nope(); return; }
+  me.path = path; me.action = null; marker = { x, y };
+}
+
+// The tastiest food you carry, for treating a friend.
+function bestFood() {
+  return ['pie', 'soup', 'muffin', 'carrotsoup', 'grilled', 'fruit', 'carrot', 'berry'].find((id) => inv()[id] > 0) || null;
+}
+function updateTreat() {
+  const food = bestFood();
+  $('talkTreat').hidden = !food;
+  if (food) $('talkTreat').textContent = `Bjud på ${ITEMS[food].icon}`;
+}
+$('talkTreat').onclick = () => {
+  const food = bestFood();
+  if (talking && food) act({ type: 'treat', vid: talking, item: food, by: me.id });
+};
 
 function closeTalk() {
   if ($('talkSheet').hidden) return;
@@ -972,8 +1583,8 @@ const keys = new Set();
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   const k = e.key.toLowerCase();
-  if (k === 'q') return renderer.rotate(-1);
-  if (k === 'e') return renderer.rotate(1);
+  if (k === 'q') return inside || renderer.rotate(-1);
+  if (k === 'e') return inside || renderer.rotate(1);
   keys.add(k);
   me.path = null; marker = null;
 });
@@ -982,7 +1593,7 @@ window.addEventListener('blur', () => keys.clear());
 window.addEventListener('resize', () => renderer.resize());
 
 function freeMove(dir, dt) {
-  const step = SPEED * dt;
+  const step = speed() * dt;
   const tryMove = (nx, ny) => {
     const cx = Math.floor(me.x), cy = Math.floor(me.y);
     // Look a bit ahead so we don't walk into trees.
@@ -1032,7 +1643,7 @@ function frame(t) {
       const n = me.path[0];
       const tx = n.x + 0.5, ty = n.y + 0.5;
       const dx = tx - me.x, dy = ty - me.y, d = Math.hypot(dx, dy);
-      const step = SPEED * dt;
+      const step = speed() * dt;
       if (d <= step) { me.x = tx; me.y = ty; me.path.shift(); } else { me.x += dx / d * step; me.y += dy / d * step; }
       face(dx, dy);
       me.moving = true;
@@ -1057,7 +1668,13 @@ function frame(t) {
     if (shared || hosting) sendPos(t);
     if (dirty && t - lastSave > 4000) { save(); lastSave = t; }
     greetNearby(now);
-    renderer.render({ players: [me, ...remoteActors(dt), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
+    villagersMeet(now);
+    nightfall(now);
+    if (terrainDirty) { terrainDirty = false; renderer.rebuildTerrain(); }
+    petCheck(now);
+    const others = remoteActors(dt);
+    const owners = [{ pid: me.id, x: me.x, y: me.y, z: me.z }, ...[...remotes.values()].filter((r) => (r.room || '') === (inside || '')).map((r) => ({ pid: r.id, x: r.rx, y: r.ry, z: r.z || 1 }))];
+    renderer.render({ players: [me, ...others, ...petActors(dt, owners), ...villagerActors(dt)], marker, focus: inside ? roomFocus() : me, t: t / 1000, dt, now, mail: myMail().some((m) => !m.read) });
   } else if (world) {
     renderer.yawTarget += dt * 0.12;
     renderer.render({ focus: { x: world.spawn.x, y: world.spawn.y, z: 1 }, t: t / 1000, dt, now });
@@ -1111,6 +1728,11 @@ window.addEventListener('popstate', () => {
   if (!$('talkSheet').hidden) closeTalk();
   else if (!$('bagSheet').hidden) closeBag();
   else if (!$('buildSheet').hidden) closeBuild();
+  else if (!$('cookSheet').hidden) closeCook();
+  else if (!$('museumSheet').hidden) closeMuseum();
+  else if (!$('mailSheet').hidden) closeMail();
+  else if (!$('houseSheet').hidden) closeHouse();
+  else if (inside) leaveHouse();
   else toast('Tryck på 🏠 för att gå hem');
 });
 
@@ -1118,4 +1740,4 @@ window.addEventListener('popstate', () => {
 for (const ev of ['click', 'touchend']) document.addEventListener(ev, unlockSpeech, { capture: true, passive: true });
 
 // Test hook for automated browser checks: open the game with ?debug.
-if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, remotes, act, vilPos, get world() { return world; }, get sim() { return sim; }, get shared() { return shared; } };
+if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, remotes, act, vilPos, get world() { return world; }, get island() { return island; }, get inside() { return inside; }, select: (id) => select(id), get sim() { return sim; }, get shared() { return shared; } };

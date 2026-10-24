@@ -15,7 +15,7 @@ Chromes meny → Installera app). iPad/iPhone: dela-knappen i Safari → **Lägg
 hemskärmen**. Bakåt-knappen stänger menyer i stället för att lämna spelet. Vill man låsa
 iPaden helt till spelet finns **Guidad åtkomst** under Inställningar → Hjälpmedel.
 
-**Spela med en kompis utan dator:** den som har ön trycker på 👋 och läser upp koden,
+**Spela med en kompis utan dator:** den som har ön trycker på 👫 och läser upp koden,
 till exempel `SOL-42`. Kompisen skriver koden under **Gå till en kompis ö** och trycker
 **Gå med**. Telefonerna försöker prata direkt med varandra (WebRTC via PeerJS). Om
 wifi:t stoppar det går meddelandena i stället genom en gratis publik MQTT-server
@@ -49,7 +49,34 @@ Spelet går också att spela ensam utan server; då sparas ön i webbläsaren.
 
 - **Samla:** yxan fäller träd (de ger trä och frön), hackan bryter sten, handen plockar
   blommor, snäckor och äpplen. Rätt verktyg väljs av sig självt när man trycker.
-- **Odla:** jordhackan gör jord i gräset, frön planteras i jorden och blir träd på en minut.
+- **Odla:** jordhackan gör jord i gräset. Trädfrön blir träd, morotsfrön blir morötter 🥕
+  och bärfrön blir bärbuskar 🫐 som ger nya bär efter en stund. Tryck på fröplatsen i
+  verktygsraden igen för att byta sorts frö (⇄).
+- **Småkryp:** fjärilar, nyckelpigor, bin, sniglar, syrsor och larver kryper och flyger
+  omkring. Tryck på ett så fångar håven det.
+- **Museum:** bygg ett museum (🔨) och ge det en av varje fisk och småkryp. Varje ny sak
+  ger en ⭐ och visar vem som hittade den.
+- **Spaden:** gör grusvägar i gräset, gräver ner vägar ett steg i taget (längst ner blir
+  det en damm) och gräver upp skatter där det är ett X. Jorden man får fyller hål, lagar
+  vägar och bygger kullar.
+- **Fiska:** tryck på vattnet så kastar du ut spöet 🎣. Det nappar efter en liten stund:
+  fisk 🐟, guldfisk 🐠 eller en ovanlig blåsfisk 🐡.
+- **Laga mat:** tryck på en lägereld. Fisk blir grillad fisk, guldfisk och äpple blir
+  fisksoppa, tre äpplen blir äppelpaj, två bär blir en muffin och två morötter blir
+  morotssoppa.
+- **Äta:** mat i ryggsäcken äts med ett tryck och då springer man jättesnabbt en stund.
+  Ingen hunger; mat är bara något gott. Vänner blir glada av mat (Bjud på mat).
+- **Dag och natt:** en dag på ön är 20 minuter. På natten blir himlen mörk med stjärnor,
+  och lyktor, lägereldar och fönster i husen lyser.
+- **Husdjur:** välj ett husdjur i ryggsäcken (valp, kattunge, kanin, griskulting, groda
+  eller panda). Det följer med dig, säger hej när du klappar det och hittar ibland en
+  present åt dig. Tryck på det igen i ryggsäcken för att ge det ett nytt namn.
+- **Brev:** bygg en brevlåda så skickar vännerna brev med presenter. Ett kuvert ✉️ syns
+  över brevlådan när det har kommit ett nytt brev, och brevet läses upp.
+- **Hus:** tryck på ett hus för att måla taket och väggarna, eller gå in 🚪. Inne i huset
+  bygger man möbler och pynt med 🔨. Gå ut med 🚪-knappen eller dörrmattan.
+- **Vinka:** 👋 vinkar. Vänner i närheten vinkar tillbaka, och vännerna vinkar till
+  varandra när de möts.
 - **Bygga:** 🔨 öppnar byggmenyn. Klossar kan staplas och klättras på. ↻ vrider saken,
   ♻️ plockar upp den igen och ger tillbaka materialet.
 - **Vänner:** Stjärna bor i ett tält från början. Bygg ett hus så flyttar en ny vän in.

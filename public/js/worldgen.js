@@ -32,8 +32,8 @@ function makeNoise(rand, cell) {
 
 export const key = (x, y) => x + ',' + y;
 
-export function generateWorld(seed) {
-  const N = WORLD_SIZE;
+export function generateWorld(seed, size = WORLD_SIZE) {
+  const N = size;
   const rand = mulberry32(seed);
   const shape = makeNoise(rand, 7);
   const hills = makeNoise(rand, 9);
@@ -91,6 +91,14 @@ export function generateWorld(seed) {
         objects[key(x, y)] = { type: 'shell' };
       }
     }
+  }
+
+  // A few treasures to dig up, away from the middle.
+  for (let n = 0, tries = 0; n < 4 && tries < 400; tries++) {
+    const x = 2 + Math.floor(rand() * (N - 4)), y = 2 + Math.floor(rand() * (N - 4));
+    if (terrain[y * N + x] !== T.GRASS || objects[key(x, y)] || Math.hypot(x - cx, y - cy) < 6) continue;
+    objects[key(x, y)] = { type: 'buried' };
+    n++;
   }
 
   return { size: N, seed, terrain, height, objects, spawn: { x: cx + 0.5, y: cy + 0.5 } };
