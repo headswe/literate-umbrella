@@ -1,6 +1,7 @@
 // Boot, game loop, input and HUD.
 import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS } from './data.js';
-import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, doorOf } from './sim.js';
+import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
+import { connect } from './net.js';
 import { speak, stopSpeaking } from './speech.js';
 import { Renderer3D } from './render3d.js';
 import { findPath } from './path.js';
@@ -15,7 +16,10 @@ const SPEED = 3.6; // tiles per second
 const ACT_COOLDOWN = 300;
 
 let world = null;     // the world being shown
-let sim = null;
+let sim = null;       // only in single player; the server runs it on shared islands
+let net = null;       // connection to the island server, when there is one
+let shared = null;    // id of the shared island we are on
+const remotes = new Map();
 let playing = false;
 let dirty = false;
 let lastSave = 0;
@@ -69,10 +73,94 @@ function renderTitle() {
       del.textContent = 'Ta bort?';
       setTimeout(() => { row.classList.remove('confirm'); del.textContent = '🗑️'; }, 3000);
     };
-    row.append(open, del);
+    row.append(open);
+    if (netOnline) {
+      const share = document.createElement('button');
+      share.className = 'del';
+      share.textContent = '📡';
+      share.setAttribute('aria-label', 'Dela ' + w.name + ' med alla på wifi:t');
+      share.onclick = () => { const s = store.loadSave(w.id); if (s) { net.send({ t: 'upload', save: s }); toast2('Delar ' + w.name + '…'); } };
+      row.append(share);
+    }
+    row.append(del);
     wl.appendChild(row);
   }
+  renderShared();
 }
+
+// ---------------------------------------------------------------- shared islands (LAN)
+let netOnline = false;
+let serverWorlds = [];
+
+function renderShared() {
+  $('sharedWrap').hidden = !netOnline;
+  if (!netOnline) return;
+  const wl = $('sharedWorlds');
+  wl.innerHTML = '';
+  for (const w of serverWorlds) {
+    const b = document.createElement('button');
+    b.className = 'world world-open shared';
+    b.innerHTML = `<span>🌍</span><span></span><span class="when"></span>`;
+    b.children[1].textContent = w.name;
+    b.children[2].textContent = w.online ? `${w.online} spelar nu` : ago(w.saved);
+    b.onclick = () => joinShared(w.id);
+    wl.appendChild(b);
+  }
+  if (!serverWorlds.length) wl.innerHTML = '<p class="small-note">Inga gemensamma öar än. Gör en ny!</p>';
+}
+
+function toast2(text) { const n = $('netNote'); n.textContent = text; }
+
+function joinShared(id) {
+  unlockAudio();
+  saveProfile();
+  shared = id;
+  net.send({ t: 'join', world: id, player: { id: me.id, name: me.name, kind: me.kind } });
+  toast2('Ansluter…');
+}
+
+function onNet(m) {
+  if (m.t === 'worlds') { serverWorlds = m.list; renderShared(); }
+  else if (m.t === 'created') { toast2('Klart! Ön finns nu under Tillsammans.'); }
+  else if (m.t === 'joined') {
+    remotes.clear();
+    for (const o of m.others) remotes.set(o.id, { ...o, rx: o.x, ry: o.y });
+    startGame(m.save, true);
+    toast2('');
+  } else if (m.t === 'hi') {
+    remotes.set(m.p.id, { ...m.p, rx: m.p.x, ry: m.p.y });
+    if (playing) toast(`${m.p.name || 'En kompis'} kom till ön! 👋`);
+  } else if (m.t === 'bye') {
+    const r = remotes.get(m.id);
+    remotes.delete(m.id);
+    if (playing && r) toast(`${r.name || 'En kompis'} gick hem`);
+  } else if (m.t === 'pos') {
+    const r = remotes.get(m.id);
+    if (r) Object.assign(r, m);
+  } else if (m.t === 'patches' && playing && shared) {
+    for (const p of m.ps) applyPatch(world, p);
+    handle(m.ps);
+  }
+}
+
+function onNetStatus(up) {
+  const was = netOnline;
+  netOnline = up;
+  if (up) {
+    net.send({ t: 'list' });
+    // Back after a hiccup: hop onto the same island again.
+    if (playing && shared && !was) net.send({ t: 'join', world: shared, player: { id: me.id, name: me.name, kind: me.kind } });
+  }
+  if (!playing) renderTitle();
+  if (playing && shared && !up) toast('Tappade kontakten med servern…');
+}
+
+// Only the island server answers this; inside an artifact or a plain file it fails quietly.
+fetch('api/hello').then((r) => (r.ok ? r.json() : null)).then((j) => {
+  if (j && j.myson) net = connect(onNet, onNetStatus);
+}).catch(() => {});
+
+$('newShared').onclick = () => { net.send({ t: 'create' }); toast2('Skapar en ny ö…'); };
 
 function ago(t) {
   if (!t) return '';
@@ -108,11 +196,12 @@ function showDemo() {
 }
 
 // ---------------------------------------------------------------- game
-function startGame(save) {
+function startGame(save, onServer = false) {
   unlockAudio();
   saveProfile();
+  if (!onServer) { shared = null; remotes.clear(); }
   world = loadWorld(save);
-  sim = new Sim(world);
+  sim = onServer ? null : new Sim(world);
   renderer.setWorld(world);
   const pl = ensurePlayer(world, me.id, { name: me.name, kind: me.kind });
   const saved = pl.x !== undefined ? pl : save.me;
@@ -139,7 +228,7 @@ function startGame(save) {
 }
 
 function save() {
-  if (!playing || !world) return;
+  if (!playing || !world || shared) return;
   Object.assign(world.players[me.id], { x: me.x, y: me.y, sel: me.sel });
   store.storeSave(toSave(world));
   dirty = false;
@@ -147,6 +236,7 @@ function save() {
 
 function goHome() {
   save();
+  if (shared) { net?.send({ t: 'leave' }); shared = null; remotes.clear(); }
   showDemo();
   $('hud').hidden = true;
   $('title').hidden = false;
@@ -444,6 +534,12 @@ function face(dx, dy) {
   if (dx || dy) me.angle = Math.atan2(dx, dy);
 }
 
+// On a shared island the server decides; alone, the local rules do.
+function act(a) {
+  if (shared) net.send({ t: 'act', a });
+  else handle(sim.act(a));
+}
+
 function goTalk(vid) {
   const v = world.villagers[vid];
   const vx = Math.floor(v.tx), vy = Math.floor(v.ty);
@@ -462,7 +558,7 @@ function doAct(tx, ty, act) {
   me.nextAct = t + ACT_COOLDOWN;
   face(tx + 0.5 - me.x, ty + 0.5 - me.y);
   me.swing = Date.now() + 200;
-  handle(sim.act({ ...act, x: tx, y: ty, by: me.id }));
+  act({ ...act, x: tx, y: ty, by: me.id });
 }
 
 // Walk next to a tile, then do something to it.
@@ -516,6 +612,29 @@ function tapAt(sx, sy) {
   const path = findPath(world, Math.floor(me.x), Math.floor(me.y), (ax, ay) => ax === x && ay === y, x, y);
   if (!path) { sfx.nope(); return; }
   me.path = path; me.action = null; marker = { x, y };
+}
+
+// ---------------------------------------------------------------- other players
+let lastPos = 0, lastSent = '';
+function sendPos(t) {
+  if (t - lastPos < 100) return;
+  lastPos = t;
+  const msg = { t: 'pos', x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), angle: +me.angle.toFixed(2), moving: me.moving, swing: me.swing };
+  const sig = JSON.stringify(msg);
+  if (sig === lastSent && !me.moving) return;
+  lastSent = sig;
+  net.send(msg);
+}
+
+function remoteActors(dt) {
+  const out = [];
+  for (const r of remotes.values()) {
+    const k = Math.min(1, dt * 12);
+    r.rx += (r.x - r.rx) * k; r.ry += (r.y - r.ry) * k;
+    if (Math.hypot(r.x - r.rx, r.y - r.ry) > 4) { r.rx = r.x; r.ry = r.y; }
+    out.push({ id: 'p:' + r.id, kind: r.kind, x: r.rx, y: r.ry, z: r.z, angle: r.angle, moving: r.moving, name: r.name || '🙂', swing: r.swing });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- villagers
@@ -590,7 +709,7 @@ $('talkSay').onclick = () => speak($('talkText').textContent);
 $('talkSheet').addEventListener('pointerdown', (e) => { if (e.target === $('talkSheet')) closeTalk(); });
 $('talkGive').onclick = () => {
   if (!talking) return;
-  handle(sim.act({ type: 'give', vid: talking, by: me.id }));
+  act({ type: 'give', vid: talking, by: me.id });
 };
 
 // ---------------------------------------------------------------- input
@@ -747,9 +866,10 @@ function frame(t) {
 
     const pl = world.players[me.id];
     pl.x = me.x; pl.y = me.y;
-    handle(sim.tick(now));
+    if (sim) handle(sim.tick(now));
+    else sendPos(t);
     if (dirty && t - lastSave > 4000) { save(); lastSave = t; }
-    renderer.render({ players: [me, ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
+    renderer.render({ players: [me, ...remoteActors(dt), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
   } else if (world) {
     renderer.yawTarget += dt * 0.12;
     renderer.render({ focus: { x: world.spawn.x, y: world.spawn.y, z: 1 }, t: t / 1000, dt, now });
@@ -765,4 +885,4 @@ renderTitle();
 requestAnimationFrame(frame);
 
 // Test hook for automated browser checks: open the game with ?debug.
-if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, get world() { return world; }, get sim() { return sim; } };
+if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, remotes, act, get world() { return world; }, get sim() { return sim; }, get shared() { return shared; } };

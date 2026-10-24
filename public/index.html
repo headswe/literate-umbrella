@@ -220,6 +220,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
   background: var(--leaf); color: #fff; box-shadow: 0 5px 0 #3f8f38;
 }
 .big:active { transform: translateY(3px); box-shadow: 0 2px 0 #3f8f38; }
+.shared-wrap { display: flex; flex-direction: column; gap: 10px; border-top: 2px dashed #e3dccb; padding-top: 14px; }
+.world.shared { background: #e8f7e4; }
+.big.blue { background: #4fb3d9; box-shadow: 0 5px 0 #3a8fb0; }
+.big.blue:active { box-shadow: 0 2px 0 #3a8fb0; }
 .small-note { font-size: 13px; color: #6d6690; text-align: center; margin: 0; }
 
 @media (max-width: 480px) {
@@ -310,6 +314,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
     </div>
     <button class="big" id="newWorld">Ny ö 🏝️</button>
     <p class="small-note">Ön sparas i den här webbläsaren.</p>
+    <div id="sharedWrap" class="shared-wrap" hidden>
+      <p class="label">Tillsammans på wifi:t</p>
+      <div class="worlds" id="sharedWorlds"></div>
+      <button class="big blue" id="newShared">Ny gemensam ö 🌍</button>
+      <p class="small-note" id="netNote">Alla som öppnar samma adress kan spela på de här öarna.</p>
+    </div>
   </div>
 </div>
 

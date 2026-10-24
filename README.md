@@ -1,35 +1,54 @@
 # Mysön
 
-Ett mysigt kubspel för barn (5–7 år). Samla trä, sten, äpplen, blommor och snäckor på din egen ö.
-Spelas i webbläsaren på iPad, mobil och dator.
+Ett mysigt 3D-kubspel för barn (5–7 år). Hugg träd, plantera nya, bygg möbler och hus,
+och få nya djurvänner som flyttar in och önskar sig saker. Spelas i webbläsaren på iPad,
+mobil och dator, ensam eller tillsammans på samma wifi.
 
-## Spela
+## Spela tillsammans på wifi:t
+
+På en dator i hemmet:
 
 ```sh
 npm install
 npm start
 ```
 
-Öppna adressen som skrivs ut. Andra enheter på samma wifi kan öppna `http://<datorns-ip>:8080`.
+Servern skriver ut en adress, till exempel `http://192.168.1.20:8080`. Öppna den på
+alla iPads och telefoner som ska vara med. Under **Tillsammans på wifi:t** på
+startsidan kan man göra en ny gemensam ö eller dela en ö man redan har (📡).
+Gemensamma öar sparas i mappen `saves/` på datorn.
+
+Spelet går också att spela ensam utan server; då sparas ön i webbläsaren.
 
 ## Styrning
 
-- **Tryck** på marken för att gå dit. Tryck på ett träd, en sten eller en blomma för att samla.
+- **Tryck** på marken för att gå dit. Tryck på träd, stenar, blommor och djur.
 - **Håll fingret** på skärmen för att gå mot fingret.
-- **Nyp** eller använd **+ / −** för att zooma. Vrid med två fingrar eller **↺ / ↻** (dator: Q / E).
+- **Nyp** eller **+ / −** för att zooma. Vrid med två fingrar eller **↺ / ↻** (dator: Q / E).
 - Dator: **WASD** eller piltangenterna.
+
+## Vad man kan göra
+
+- **Samla:** yxan fäller träd (de ger trä och frön), hackan bryter sten, handen plockar
+  blommor, snäckor och äpplen. Rätt verktyg väljs av sig självt när man trycker.
+- **Odla:** jordhackan gör jord i gräset, frön planteras i jorden och blir träd på en minut.
+- **Bygga:** 🔨 öppnar byggmenyn. Klossar kan staplas och klättras på. ↻ vrider saken,
+  ♻️ plockar upp den igen och ger tillbaka materialet.
+- **Vänner:** Stjärna bor i ett tält från början. Bygg ett hus så flyttar en ny vän in.
+  Tryck på en vän för att höra vad den önskar sig (läses upp på svenska). Uppfyllda
+  önskningar ger hjärtan, stjärnor och presenter.
 
 Lägg till `?low` i adressen för enklare grafik utan skuggor.
 
 ## Bygga en fristående sida
 
-`npm run build:artifact` gör `dist/myson.html` med allt inbakat i en fil.
+`npm run build:artifact` gör `dist/myson.html` med allt inbakat i en fil (three.js laddas från jsDelivr).
 
 ## Kod
 
-- `public/js/sim.js` – spelregler (körs i webbläsaren nu, på LAN-servern senare)
+- `public/js/sim.js` – spelregler; körs i webbläsaren när man spelar ensam och på servern på delade öar
+- `public/js/data.js` – saker, byggen, vänner och deras önskningar
 - `public/js/worldgen.js` – ön skapas från ett frö
-- `public/js/render3d.js` – 3D-grafik med three.js (WebGL), sänker kvaliteten själv på långsamma enheter
-- `public/js/characters.js` – djuren, byggda av klossar
-- `public/js/textures.js` – pixeltexturer som ritas när spelet startar
-- `public/js/main.js` – spelloop, styrning och knappar
+- `public/js/render3d.js`, `models.js`, `characters.js`, `textures.js` – 3D-grafik med three.js
+- `public/js/main.js` – spelloop, styrning, menyer och prat
+- `public/js/net.js`, `server.js` – delade öar över wifi med WebSocket
