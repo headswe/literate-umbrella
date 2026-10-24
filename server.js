@@ -146,10 +146,10 @@ wss.on('connection', (ws) => {
           broadcast(room, { t: 'patches', ps: patches });
         }
       } else if (room && me && m.t === 'pos') {
-        Object.assign(me, { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0, waveN: +m.waveN || 0 });
+        Object.assign(me, { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0, waveN: +m.waveN || 0, room: String(m.room || '').slice(0, 12) });
         const pl = room.world.players[me.id];
         pl.x = me.x; pl.y = me.y;
-        broadcast(room, { t: 'pos', id: me.id, x: me.x, y: me.y, z: me.z, angle: me.angle, moving: me.moving, swing: me.swing, waveN: me.waveN }, ws);
+        broadcast(room, { t: 'pos', id: me.id, x: me.x, y: me.y, z: me.z, angle: me.angle, moving: me.moving, swing: me.swing, waveN: me.waveN, room: me.room }, ws);
       }
     } catch (err) {
       send(ws, { t: 'error', message: 'Något gick fel på servern.' });

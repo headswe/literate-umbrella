@@ -66,6 +66,15 @@ Spelet går också att spela ensam utan server; då sparas ön i webbläsaren.
   morotssoppa.
 - **Äta:** mat i ryggsäcken äts med ett tryck och då springer man jättesnabbt en stund.
   Ingen hunger; mat är bara något gott. Vänner blir glada av mat (Bjud på mat).
+- **Dag och natt:** en dag på ön är 20 minuter. På natten blir himlen mörk med stjärnor,
+  och lyktor, lägereldar och fönster i husen lyser.
+- **Husdjur:** välj ett husdjur i ryggsäcken (valp, kattunge, kanin, griskulting, groda
+  eller panda). Det följer med dig, säger hej när du klappar det och hittar ibland en
+  present åt dig. Tryck på det igen i ryggsäcken för att ge det ett nytt namn.
+- **Brev:** bygg en brevlåda så skickar vännerna brev med presenter. Ett kuvert ✉️ syns
+  över brevlådan när det har kommit ett nytt brev, och brevet läses upp.
+- **Hus:** tryck på ett hus för att måla taket och väggarna, eller gå in 🚪. Inne i huset
+  bygger man möbler och pynt med 🔨. Gå ut med 🚪-knappen eller dörrmattan.
 - **Vinka:** 👋 vinkar. Vänner i närheten vinkar tillbaka, och vännerna vinkar till
   varandra när de möts.
 - **Bygga:** 🔨 öppnar byggmenyn. Klossar kan staplas och klättras på. ↻ vrider saken,

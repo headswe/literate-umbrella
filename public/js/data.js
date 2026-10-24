@@ -5,7 +5,8 @@ export const WORLD_SIZE = 60;
 export const OLD_WORLD_SIZE = 44;
 
 // Terrain kinds stored per tile.
-export const T = { WATER: 0, SAND: 1, GRASS: 2, DIRT: 3 };
+// FLOOR and WALL are only used inside houses.
+export const T = { WATER: 0, SAND: 1, GRASS: 2, DIRT: 3, FLOOR: 4, WALL: 5 };
 
 // Small SVG icons for things that have no emoji.
 const svg = (body) => `<svg viewBox="0 0 16 16" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
@@ -101,6 +102,13 @@ export const PETS = {
 };
 export const PET_FINDS = ['shell', 'shell', 'fruit', 'flower', 'seed_carrot', 'seed_berry', 'seed_fruit', 'star'];
 
+// Paint for houses: roofs and walls.
+export const ROOF_COLORS = ['#e8473d', '#ff7eb6', '#4fb3ff', '#63c759', '#ffd23f', '#9b6bff', '#e8742f', '#3d3a4a'];
+export const WALL_COLORS = ['#fff3dc', '#ffd6e0', '#d6ecff', '#dff5d0', '#fff2b0', '#e6dcff', '#c9a27a', '#ffffff'];
+// Inside a house: a room this many tiles across (walls included), furnished with these.
+export const ROOM_SIZE = 8;
+export const ROOM_CATS = ['furniture', 'decor', 'block'];
+
 // Letters friends send to the mailbox. {namn} is you, {från} is the friend.
 export const LETTERS = [
   'Hej {namn}! Jag tänkte på dig idag. Här är en liten present till dig. Kram, {från}',
@@ -172,6 +180,7 @@ export const BUILDS = {
   rocket: { name: 'Rymdskepp', art: 'ett', cat: 'decor', cost: { stone: 4, wood: 2, star: 2 } },
   rainbow: { name: 'Regnbåge', art: 'en', cat: 'decor', cost: { flower: 4, star: 1 } },
   tent: { name: 'Tält', art: 'ett', cat: 'hidden', cost: {} },
+  doormat: { name: 'Dörrmatta', art: 'en', cat: 'hidden', cost: {}, flat: true },
 };
 
 export const BUILD_CATS = [

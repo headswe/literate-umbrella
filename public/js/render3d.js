@@ -139,16 +139,23 @@ export class Renderer3D {
     const before = this.layers.length;
     const grassMats = [L(tx.grassSide), L(tx.grassSide), L(tx.grassTop), L(tx.dirt), L(tx.grassSide), L(tx.grassSide)];
     const roadMats = [L(tx.dirt), L(tx.dirt), L(tx.road), L(tx.dirt), L(tx.dirt), L(tx.dirt)];
-    let grassN = 0, dirtN = 0, sandN = 0, roadN = 0;
+    let grassN = 0, dirtN = 0, sandN = 0, roadN = 0, floorN = 0, wallN = 0;
     for (let i = 0; i < N * N; i++) {
       if (w.terrain[i] === T.GRASS) { grassN++; dirtN += w.height[i]; } else if (w.terrain[i] === T.SAND) sandN += w.height[i];
       else if (w.terrain[i] === T.DIRT) { roadN++; dirtN += w.height[i]; }
+      else if (w.terrain[i] === T.FLOOR) floorN += w.height[i];
+      else if (w.terrain[i] === T.WALL) wallN += w.height[i];
     }
     const grass = this.instanced(grassMats, grassN);
     const dirt = this.instanced(L(tx.dirt), dirtN);
     const sand = this.instanced(L(tx.sand), sandN);
     const road = this.instanced(roadMats, roadN);
+    const floorM = this.instanced(L(tx.planks), floorN);
+    // Walls glow a little of their own colour so the inside faces are not left in shadow.
+    const wallColor = new THREE.Color(w.wallColor || '#fff3dc');
+    const wallM = this.instanced(new THREE.MeshLambertMaterial({ color: wallColor, emissive: wallColor.clone().multiplyScalar(0.45) }), wallN);
     grass.userData.tiles = []; dirt.userData.tiles = []; sand.userData.tiles = []; road.userData.tiles = [];
+    floorM.userData.tiles = []; wallM.userData.tiles = [];
 
     const put = (mesh, x, y, level, shade) => {
       this.tmp.position.set(x + 0.5, level + 0.5, y + 0.5);
@@ -173,14 +180,26 @@ export class Renderer3D {
           put(road, x, y, h - 1, shade);
         } else if (t === T.SAND) {
           for (let l = 0; l < h; l++) put(sand, x, y, l, l === h - 1 ? shade : 0.9);
+        } else if (t === T.FLOOR) {
+          for (let l = 0; l < h; l++) put(floorM, x, y, l, l === h - 1 ? shade : 0.8);
+        } else if (t === T.WALL) {
+          // A stripe near the floor, like a skirting board.
+          for (let l = 0; l < h; l++) put(wallM, x, y, l, l === 0 ? 0.78 : ((x + y) & 1 ? 1 : 0.96));
         } else {
           const land = (ax, ay) => ax >= 0 && ay >= 0 && ax < N && ay < N && w.terrain[ay * N + ax] !== T.WATER;
           if (land(x - 1, y) || land(x + 1, y) || land(x, y - 1) || land(x, y + 1)) foam.push({ x, y });
         }
       }
     }
-    for (const m of [grass, dirt, sand, road]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }
-    this.terrainMeshes = [grass, dirt, sand, road];
+    for (const m of [grass, dirt, sand, road, floorM, wallM]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }
+    this.terrainMeshes = [grass, dirt, sand, road, floorM, wallM];
+    if (w.indoor) {
+      // No sea inside a house.
+      this.water = null; this.foam = null;
+      this.terrainLayers = this.layers.splice(before);
+      this.layers.push(...this.terrainLayers);
+      return;
+    }
 
     // Sea floor and water.
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(N + 160, N + 160), new THREE.MeshLambertMaterial({ color: '#e3cf8e' }));
@@ -338,10 +357,13 @@ export class Renderer3D {
   }
 
   // l is 1 at noon and 0 at night.
-  setDaylight(l, t) {
+  // Indoors the room is always bright and `lamps` says how much the lamps glow.
+  setDaylight(l, t, lamps = null) {
     this.night = 1 - l;
-    if (l !== this.light) {
+    const indoor = lamps !== null;
+    if (l !== this.light || indoor !== this.wasIndoor) {
       this.light = l;
+      this.wasIndoor = indoor;
       const sky = this.color.set(NIGHT_SKY).lerp(new THREE.Color(SKY), l);
       // A warm orange touch at sunset and sunrise.
       sky.lerp(new THREE.Color('#ff9a6b'), Math.sin(l * Math.PI) * 0.35);
@@ -353,10 +375,11 @@ export class Renderer3D {
       this.sun.color.set('#9fb4ff').lerp(new THREE.Color('#fff1d6'), l);
       this.stars.visible = l < 0.95;
       this.stars.material.opacity = 1 - l;
+      if (indoor) { this.scene.background.set('#2e2540'); this.scene.fog.color.set('#2e2540'); }
     }
     this.stars.position.copy(this.camera.position);
     // Light the lamps closest to the camera.
-    const dark = Math.min(1, (1 - l) * 1.5);
+    const dark = indoor ? lamps : Math.min(1, (1 - l) * 1.5);
     const near = dark > 0 ? this.lampSpots
       .map((s) => ({ s, d: (s.x - this.target.x) ** 2 + (s.y - this.target.z) ** 2 }))
       .filter((o) => o.d < 400).sort((a, b) => a.d - b.d).slice(0, LAMPS) : [];
@@ -429,6 +452,7 @@ export class Renderer3D {
       }
     }
     // Water has no blocks; use where the ray meets the water surface.
+    if (this.world.indoor) return null;
     const g = this.groundPoint(sx, sy, WATER_Y);
     if (!g) return null;
     const x = Math.floor(g.x), y = Math.floor(g.y);
@@ -576,22 +600,26 @@ export class Renderer3D {
     this.target.x += (focus.x - this.target.x) * k;
     this.target.y += (focus.z + 0.5 - this.target.y) * k;
     this.target.z += (focus.y - this.target.z) * k;
-    const cp = Math.cos(this.pitch) * this.dist;
+    // Step back indoors so the whole room fits, even on a narrow phone.
+    const dist = this.world.indoor ? Math.max(this.dist, this.W < 600 ? 17 : 14) : this.dist;
+    const cp = Math.cos(this.pitch) * dist;
     this.camera.position.set(
       this.target.x + Math.sin(this.yaw) * cp,
-      this.target.y + Math.sin(this.pitch) * this.dist,
+      this.target.y + Math.sin(this.pitch) * dist,
       this.target.z + Math.cos(this.yaw) * cp,
     );
     this.camera.lookAt(this.target);
 
     this.sun.position.set(this.target.x - 10, this.target.y + 22, this.target.z + 6);
     this.sun.target.position.copy(this.target);
-    this.setDaylight(daylight(now), t);
+    this.setDaylight(this.world.indoor ? 1 : daylight(now), t, this.world.indoor ? Math.max(0.5, 1 - daylight(now)) : null);
 
     if (this.natureDirty || now - this.lastNature > (this.growing ? 200 : 1000)) { this.rebuildNature(now); this.lastNature = now; }
 
-    this.foam.material.opacity = 0.35 + Math.sin(t * 1.6) * 0.15;
-    this.water.position.y = WATER_Y + Math.sin(t * 0.9) * 0.025;
+    if (this.water) {
+      this.foam.material.opacity = 0.35 + Math.sin(t * 1.6) * 0.15;
+      this.water.position.y = WATER_Y + Math.sin(t * 0.9) * 0.025;
+    }
 
     this.syncPlayers(players, t, dt);
     this.syncMailFlags(mail, t);

@@ -285,6 +285,10 @@ export function drawBuild(ps, k, o, x, y, z, now, nb) {
       p('glow', k, x + 0.45, y + 0.45, z + 0.45, 0.1, 0.1, 0.22 * f(2), '#ffe066');
       break;
     }
+    case 'doormat':
+      p('solid', k, x + 0.12, y + 0.2, z, 0.76, 0.6, 0.04, '#c0453a');
+      p('solid', k, x + 0.2, y + 0.28, z + 0.01, 0.6, 0.44, 0.04, '#e8735f');
+      break;
     case 'mailbox':
       p('planks', k, x + 0.45, y + 0.45, z, 0.1, 0.1, 0.7);
       p('solid', k, x + 0.32, y + 0.3, z + 0.7, 0.36, 0.44, 0.28, '#e8473d');
@@ -327,9 +331,9 @@ export function drawBuild(ps, k, o, x, y, z, now, nb) {
       break;
     case 'house': {
       ps.clearGroup();
-      const roof = VILLAGERS.find((v) => v.id === o.owner)?.roof || '#c9b59a';
+      const roof = o.roof || VILLAGERS.find((v) => v.id === o.owner)?.roof || '#c9b59a';
       p('cobble', k, x + 0.05, y + 0.05, z, 1.9, 1.9, 0.18);
-      p('solid', k, x + 0.15, y + 0.15, z + 0.18, 1.7, 1.7, 1.15, '#fff3dc');
+      p('solid', k, x + 0.15, y + 0.15, z + 0.18, 1.7, 1.7, 1.15, o.wall || '#fff3dc');
       for (const cx of [0.15, 1.75]) for (const cy of [0.15, 1.75]) p('trunk', k, x + cx, y + cy, z + 0.18, 0.1, 0.1, 1.15);
       p('planks', k, x + 0.78, y + 1.83, z + 0.18, 0.44, 0.05, 0.75);
       p('solid', k, x + 1.1, y + 1.89, z + 0.5, 0.05, 0.03, 0.06, '#ffd23f');

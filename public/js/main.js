@@ -1,11 +1,12 @@
 // Boot, game loop, input and HUD.
-import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES, COLLECTION, daylight, PETS } from './data.js';
+import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES, COLLECTION, daylight, PETS, ROOF_COLORS, WALL_COLORS, ROOM_SIZE, ROOM_CATS } from './data.js';
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
 import { connect } from './net.js';
 import * as p2p from './p2p.js';
 import { speak, stopSpeaking, unlockSpeech, isSpeaking } from './speech.js';
 import { Renderer3D } from './render3d.js';
 import { findPath } from './path.js';
+import { key } from './worldgen.js';
 import { sfx, unlockAudio, setMuted, isMuted } from './audio.js';
 import * as store from './storage.js';
 
@@ -18,7 +19,10 @@ const FAST = 1.6;   // how much faster you run after eating
 const speed = () => SPEED * (me.boost > Date.now() ? FAST : 1);
 const ACT_COOLDOWN = 300;
 
-let world = null;     // the world being shown
+let world = null;     // the world being shown: the island, or the inside of a house
+let island = null;    // the island itself
+let inside = null;    // key of the house we are in, if any
+let outside = null;   // where to stand when coming out again
 let sim = null;       // only in single player; the server runs it on shared islands
 let net = null;       // connection to the island server, when there is one
 let shared = null;    // id of the shared island we are on
@@ -147,7 +151,7 @@ function onNet(m) {
     const r = remotes.get(m.id);
     if (r) { sawWave(r, m.waveN); Object.assign(r, m); }
   } else if (m.t === 'patches' && playing && shared) {
-    for (const p of m.ps) applyPatch(world, p);
+    for (const p of m.ps) applyPatch(island, p);
     handle(m.ps);
   }
 }
@@ -205,7 +209,7 @@ function stopHosting() {
 function showInvite() {
   const pill = $('inviteCode');
   pill.hidden = !hosting;
-  $('inviteBtn').hidden = !!shared;
+  $('inviteBtn').hidden = !!shared || !!inside;
   $('inviteBtn').setAttribute('aria-pressed', String(!!hosting));
   if (!hosting) return;
   const n = guests.size;
@@ -222,7 +226,7 @@ function onGuest(conn, m) {
     ensurePlayer(world, p.id, { name: p.name, kind: p.kind });
     dirty = true;
     const others = [myInfo(), ...[...guests.values()].filter((g) => g !== p).map((g) => ({ ...g, ...remotes.get(g.id) }))];
-    hosting.send(conn, { t: 'joined', save: toSave(world), others });
+    hosting.send(conn, { t: 'joined', save: toSave(island), others });
     hosting.broadcast({ t: 'hi', p }, conn);
     remotes.set(p.id, { ...p, x: world.spawn.x, y: world.spawn.y, z: 1, rx: world.spawn.x, ry: world.spawn.y });
     toast(`${p.name || 'En kompis'} kom till ön! 👋`);
@@ -235,7 +239,7 @@ function onGuest(conn, m) {
   if (m.t === 'act' && m.a && typeof m.a === 'object') {
     share(sim.act({ ...m.a, by: p.id }));
   } else if (m.t === 'pos') {
-    const pos = { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0, waveN: +m.waveN || 0 };
+    const pos = { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0, waveN: +m.waveN || 0, room: String(m.room || '') };
     const r = remotes.get(p.id);
     if (r) { sawWave(r, pos.waveN); Object.assign(r, pos); }
     const pl = world.players[p.id];
@@ -319,7 +323,8 @@ $('newWorld').onclick = () => {
 
 // A slowly turning demo island behind the title card.
 function showDemo() {
-  world = loadWorld(newWorldSave('demo', 20261024));
+  world = island = loadWorld(newWorldSave('demo', 20261024));
+  inside = null;
   sim = null;
   playing = false;
   renderer.setWorld(world);
@@ -330,7 +335,8 @@ function startGame(save, onServer = false) {
   unlockAudio();
   saveProfile();
   if (!onServer) { shared = null; remotes.clear(); }
-  world = loadWorld(save);
+  world = island = loadWorld(save);
+  inside = null;
   sim = onServer ? null : new Sim(world);
   renderer.setWorld(world);
   const pl = ensurePlayer(world, me.id, { name: me.name, kind: me.kind });
@@ -354,6 +360,8 @@ function startGame(save, onServer = false) {
   $('cookSheet').hidden = true;
   $('museumSheet').hidden = true;
   $('mailSheet').hidden = true;
+  $('houseSheet').hidden = true;
+  showPlace();
   me.boost = 0;
   ensureThumbs();
   vilPos.clear();
@@ -363,9 +371,10 @@ function startGame(save, onServer = false) {
 }
 
 function save() {
-  if (!playing || !world || shared) return;
-  Object.assign(world.players[me.id], { x: me.x, y: me.y, sel: me.sel });
-  store.storeSave(toSave(world));
+  if (!playing || !island || shared) return;
+  const at = inside ? outside : me;
+  Object.assign(island.players[me.id], { x: at.x, y: at.y, sel: me.sel });
+  store.storeSave(toSave(island));
   dirty = false;
 }
 
@@ -388,8 +397,9 @@ $('muteBtn').onclick = () => {
 };
 $('zoomIn').onclick = () => renderer.zoomBy(1.2);
 $('zoomOut').onclick = () => renderer.zoomBy(1 / 1.2);
-$('rotL').onclick = () => renderer.rotate(-1);
-$('rotR').onclick = () => renderer.rotate(1);
+// Indoors the camera stays put so the walls never hide the room.
+$('rotL').onclick = () => { if (!inside) renderer.rotate(-1); };
+$('rotR').onclick = () => { if (!inside) renderer.rotate(1); };
 window.addEventListener('pagehide', save);
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
@@ -538,6 +548,7 @@ function renderBuild() {
   const list = $('buildList');
   list.innerHTML = '';
   for (const cat of BUILD_CATS) {
+    if (inside && !ROOM_CATS.includes(cat.id)) continue;
     const h = document.createElement('p');
     h.className = 'label';
     h.textContent = cat.name;
@@ -620,9 +631,16 @@ function handle(patches) {
     if (p.k === 'tile') { dirty = true; terrainDirty = true; }
     if (p.k === 'inv') { dirty = true; if (p.pid === me.id) bump(p.item); }
     if (p.k === 'pet') dirty = true;
+    if (p.k === 'room') { dirty = true; if (p.house === inside) refreshRoom(); }
+    if (p.k === 'obj' && inside && p.key === inside) {
+      dirty = true;
+      if (!p.v || p.v.id !== 'house') { leaveHouse(); toast('Huset är borta!'); } else if (p.v.wall !== world.wallColor) enterHouse(inside, true);
+    }
     if (p.k !== 'fx') continue;
     const z = heightAt(world, p.x, p.y);
     const mine = p.by === me.id;
+    // Something happening in another place (a house, or outside) is not drawn here.
+    if (p.x !== undefined && (p.house || null) !== inside && (p.fx === 'grown' || (!mine && p.fx !== 'movein'))) continue;
     switch (p.fx) {
       case 'gain': {
         const show = () => renderer.floatText(p.x, p.y, z, ITEMS[p.item].svg ? '🌱' : ITEMS[p.item].icon, '+' + p.n);
@@ -698,6 +716,10 @@ function handle(patches) {
           if (p.item) { sfx.gain(); renderer.floatText(me.x - 0.5, me.y - 0.5, me.z + 0.5, ITEMS[p.item].svg ? '🌱' : ITEMS[p.item].icon, '+1'); }
           if (!$('mailSheet').hidden) renderMail();
         }
+        break;
+      case 'painted':
+        renderer.burst(p.x + 0.5, p.y + 0.5, z + 1.6, '#ffffff', 14);
+        if (mine) { sfx.build(); if (houseAt) renderHouse(); }
         break;
       case 'donated':
         renderer.burst(p.x + 0.5, p.y + 0.5, z + 1.5, '#ffd23f', 24);
@@ -847,6 +869,10 @@ function goTalk(vid) {
 
 function doAct(tx, ty, what) {
   if (what.type === 'cookmenu') { face(tx + 0.5 - me.x, ty + 0.5 - me.y); openCook(tx, ty); return; }
+  if (what.type === 'housemenu') { face(tx + 1 - me.x, ty + 1 - me.y); openHouse(tx, ty); return; }
+  if (what.type === 'leavehouse') { leaveHouse(); return; }
+  if (inside && what.type === 'build') what = { ...what, type: 'roomput', house: inside };
+  if (inside && what.type === 'pickup') what = { ...what, type: 'roomtake', house: inside };
   if (what.type === 'mailmenu') { face(tx + 0.5 - me.x, ty + 0.5 - me.y); openMail(); return; }
   if (what.type === 'museummenu') { face(tx + 1 - me.x, ty + 1 - me.y); openMuseum(tx, ty); return; }
   if (what.type === 'talk') {
@@ -893,6 +919,8 @@ function tapAt(sx, sy) {
   const sel = me.sel;
   const kind = ITEMS[sel]?.kind;
 
+  if (inside) return tapInside(x, y, obj, sel);
+
   // Building: place the chosen thing, or pick things up again.
   if (sel.startsWith('build:')) {
     const id = sel.slice(6);
@@ -917,6 +945,7 @@ function tapAt(sx, sy) {
   }
   if (obj && obj.type === 'build' && obj.id === 'campfire' && !sel.startsWith('build:') && sel !== 'pickup') return goAct(x, y, { type: 'cookmenu' });
   if (obj && obj.type === 'build' && obj.id === 'museum' && !sel.startsWith('build:') && sel !== 'pickup') return goMuseum(x, y);
+  if (obj && obj.type === 'build' && obj.id === 'house' && !sel.startsWith('build:') && sel !== 'pickup') return goBig(x, y, { type: 'housemenu' });
   if (obj && obj.type === 'build' && obj.id === 'mailbox' && !sel.startsWith('build:') && sel !== 'pickup') return goAct(x, y, { type: 'mailmenu' });
 
   // Seeds go in soil, the hoe works on grass.
@@ -943,7 +972,7 @@ let lastPos = 0, lastSent = '';
 function sendPos(t) {
   if (t - lastPos < 100) return;
   lastPos = t;
-  const msg = { t: 'pos', x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), angle: +me.angle.toFixed(2), moving: me.moving, swing: me.swing, waveN: me.waveN };
+  const msg = { t: 'pos', x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), angle: +me.angle.toFixed(2), moving: me.moving, swing: me.swing, waveN: me.waveN, room: inside || '' };
   const sig = JSON.stringify(msg);
   if (sig === lastSent && !me.moving) return;
   lastSent = sig;
@@ -1011,6 +1040,7 @@ function petCheck(now) {
 function remoteActors(dt) {
   const out = [];
   for (const r of remotes.values()) {
+    if ((r.room || '') !== (inside || '')) continue;
     const k = Math.min(1, dt * 12);
     r.rx += (r.x - r.rx) * k; r.ry += (r.y - r.ry) * k;
     if (Math.hypot(r.x - r.rx, r.y - r.ry) > 4) { r.rx = r.x; r.ry = r.y; }
@@ -1228,12 +1258,13 @@ $('cookSheet').addEventListener('pointerdown', (e) => { if (e.target === $('cook
 // ---------------------------------------------------------------- museum
 let museumAt = null;
 // The museum is 2×2; walk up to any side of it.
-function goMuseum(x, y) {
+const goMuseum = (x, y) => goBig(x, y, { type: 'museummenu' });
+function goBig(x, y, what) {
   const goal = (ax, ay) => ax >= x - 1 && ax <= x + 2 && ay >= y - 1 && ay <= y + 2;
-  if (goal(Math.floor(me.x), Math.floor(me.y))) return openMuseum(x, y);
+  if (goal(Math.floor(me.x), Math.floor(me.y))) return doAct(x, y, what);
   const path = findPath(world, Math.floor(me.x), Math.floor(me.y), goal, x, y);
   if (!path) { sfx.nope(); return; }
-  me.path = path; me.action = { x, y, act: { type: 'museummenu' } }; marker = { x, y };
+  me.path = path; me.action = { x, y, act: what }; marker = { x, y };
 }
 function openMuseum(x, y) {
   museumAt = { x, y };
@@ -1321,6 +1352,133 @@ $('mailClose').onclick = closeMail;
 $('mailBack').onclick = () => { reading = null; stopSpeaking(); renderMail(); };
 $('mailRead').onclick = () => { const m = myMail().find((l) => l.id === reading); if (m) speak(m.text, VIL[m.from]?.voice); };
 $('mailSheet').addEventListener('pointerdown', (e) => { if (e.target === $('mailSheet')) closeMail(); });
+
+// ---------------------------------------------------------------- houses: paint and go inside
+let houseAt = null;
+function openHouse(x, y) {
+  houseAt = { x, y };
+  renderHouse();
+  $('houseSheet').hidden = false;
+  sfx.pop();
+}
+function renderHouse() {
+  const o = island.objects[key(houseAt.x, houseAt.y)];
+  if (!o || o.id !== 'house') { closeHouse(); return; }
+  $('houseTitle').textContent = o.owner ? `${VIL[o.owner].name}s hus` : 'Hus';
+  const swatches = (el, part, colors, current) => {
+    el.innerHTML = '';
+    for (const c of colors) {
+      const b = document.createElement('button');
+      b.className = 'swatch';
+      b.style.background = c;
+      b.setAttribute('aria-label', 'Färg');
+      b.setAttribute('aria-pressed', String(c === current));
+      b.onclick = () => act({ type: 'paint', part, color: c, x: houseAt.x, y: houseAt.y, by: me.id });
+      el.appendChild(b);
+    }
+  };
+  swatches($('roofColors'), 'roof', ROOF_COLORS, o.roof || VIL[o.owner]?.roof);
+  swatches($('wallColors'), 'wall', WALL_COLORS, o.wall || WALL_COLORS[0]);
+}
+function closeHouse() { $('houseSheet').hidden = true; houseAt = null; }
+$('houseClose').onclick = closeHouse;
+$('houseSheet').addEventListener('pointerdown', (e) => { if (e.target === $('houseSheet')) closeHouse(); });
+$('houseEnter').onclick = () => { const h = houseAt; closeHouse(); if (h) enterHouse(key(h.x, h.y)); };
+
+// The inside of a house is a small world of its own: a wooden floor, two walls at the
+// back (the front is open so you can see in) and a doormat to walk out again.
+const DOOR = { x: Math.floor(ROOM_SIZE / 2), y: ROOM_SIZE - 1 };
+// Indoors the camera looks at the middle of the room, so all of it fits on the screen.
+// On a narrow phone it leans towards where you stand instead.
+const ROOM_VIEW = { x: ROOM_SIZE / 2 + 0.3, y: ROOM_SIZE / 2 + 0.3, z: 0.6 };
+function roomFocus() {
+  if (window.innerWidth >= 600) return ROOM_VIEW;
+  return { x: (ROOM_VIEW.x + me.x) / 2, y: (ROOM_VIEW.y + me.y) / 2, z: ROOM_VIEW.z };
+}
+function roomObjects(house) {
+  const objs = { ...(house.room || {}) };
+  objs[key(DOOR.x, DOOR.y)] = { type: 'build', id: 'doormat', rot: 0 };
+  return objs;
+}
+function roomWorld(hk) {
+  const house = island.objects[hk], N = ROOM_SIZE;
+  const terrain = new Uint8Array(N * N), height = new Uint8Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const wall = x === 0 || y === 0;
+    terrain[y * N + x] = wall ? T.WALL : T.FLOOR;
+    height[y * N + x] = wall ? 4 : 1;
+  }
+  return {
+    indoor: true, house: hk, size: N, terrain, height, objects: roomObjects(house),
+    players: island.players, villagers: {}, museum: island.museum, name: island.name,
+    spawn: { x: DOOR.x + 0.5, y: DOOR.y - 0.5 }, wallColor: house.wall || WALL_COLORS[0],
+  };
+}
+function enterHouse(hk, again = false) {
+  if (!island.objects[hk]) return;
+  if (!inside) {
+    const [hx, hy] = hk.split(',').map(Number);
+    outside = { x: hx + 1, y: hy + 2.5 };
+  }
+  inside = hk;
+  world = roomWorld(hk);
+  renderer.setWorld(world);
+  if (!again) {
+    me.x = world.spawn.x; me.y = world.spawn.y; me.z = 1;
+    me.path = null; me.action = null; marker = null;
+    me.angle = Math.PI;
+    renderer.target.set(ROOM_VIEW.x, ROOM_VIEW.z + 0.5, ROOM_VIEW.y);
+    petPos.delete(me.id);
+    sfx.pop();
+    const o = island.objects[hk];
+    toast(o.owner ? `Välkommen in hos ${VIL[o.owner].name}! 🏠 Bygg möbler med 🔨` : 'Välkommen in! 🏠 Bygg möbler med 🔨. Gå ut på mattan.');
+  }
+  renderer.yawTarget = renderer.yaw = Math.PI / 4;
+  showPlace();
+}
+// Indoors the door button takes the place of the invite button.
+function showPlace() {
+  $('exitBtn').hidden = !inside;
+  $('inviteBtn').hidden = !!shared || !!inside;
+}
+$('exitBtn').onclick = () => leaveHouse();
+function leaveHouse() {
+  if (!inside) return;
+  inside = null;
+  world = island;
+  renderer.setWorld(world);
+  me.x = outside.x; me.y = outside.y;
+  if (!isWalkable(world, Math.floor(me.x), Math.floor(me.y))) { me.x = world.spawn.x; me.y = world.spawn.y; }
+  me.z = heightAt(world, Math.floor(me.x), Math.floor(me.y));
+  me.path = null; me.action = null; marker = null;
+  me.angle = 0;
+  renderer.target.set(me.x, me.z, me.y);
+  petPos.delete(me.id);
+  vilPos.clear();
+  sfx.pop();
+  showPlace();
+}
+function refreshRoom() {
+  world.objects = roomObjects(island.objects[inside]);
+  renderer.markDirty();
+}
+function tapInside(x, y, obj, sel) {
+  if (obj && obj.id === 'doormat') return goAct(x, y, { type: 'leavehouse' });
+  if (sel.startsWith('build:')) {
+    const id = sel.slice(6);
+    if (!ROOM_CATS.includes(BUILDS[id].cat)) { sfx.nope(); toast(`${BUILDS[id].name} får inte plats inomhus`); return; }
+    if (!obj || (obj.id === id && BUILDS[id].stack)) {
+      if (!canAfford(inv(), BUILDS[id].cost)) { sfx.nope(); toast(costText(id)); return; }
+      return goAct(x, y, { type: 'build', id, rot: me.rot });
+    }
+    return goAct(x, y, { type: 'pickup' });
+  }
+  if (sel === 'pickup' && obj) return goAct(x, y, { type: 'pickup' });
+  if (!isWalkable(world, x, y)) { sfx.nope(); return; }
+  const path = findPath(world, Math.floor(me.x), Math.floor(me.y), (ax, ay) => ax === x && ay === y, x, y);
+  if (!path) { sfx.nope(); return; }
+  me.path = path; me.action = null; marker = { x, y };
+}
 
 // The tastiest food you carry, for treating a friend.
 function bestFood() {
@@ -1425,8 +1583,8 @@ const keys = new Set();
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   const k = e.key.toLowerCase();
-  if (k === 'q') return renderer.rotate(-1);
-  if (k === 'e') return renderer.rotate(1);
+  if (k === 'q') return inside || renderer.rotate(-1);
+  if (k === 'e') return inside || renderer.rotate(1);
   keys.add(k);
   me.path = null; marker = null;
 });
@@ -1515,8 +1673,8 @@ function frame(t) {
     if (terrainDirty) { terrainDirty = false; renderer.rebuildTerrain(); }
     petCheck(now);
     const others = remoteActors(dt);
-    const owners = [{ pid: me.id, x: me.x, y: me.y, z: me.z }, ...[...remotes.values()].map((r) => ({ pid: r.id, x: r.rx, y: r.ry, z: r.z || 1 }))];
-    renderer.render({ players: [me, ...others, ...petActors(dt, owners), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now, mail: myMail().some((m) => !m.read) });
+    const owners = [{ pid: me.id, x: me.x, y: me.y, z: me.z }, ...[...remotes.values()].filter((r) => (r.room || '') === (inside || '')).map((r) => ({ pid: r.id, x: r.rx, y: r.ry, z: r.z || 1 }))];
+    renderer.render({ players: [me, ...others, ...petActors(dt, owners), ...villagerActors(dt)], marker, focus: inside ? roomFocus() : me, t: t / 1000, dt, now, mail: myMail().some((m) => !m.read) });
   } else if (world) {
     renderer.yawTarget += dt * 0.12;
     renderer.render({ focus: { x: world.spawn.x, y: world.spawn.y, z: 1 }, t: t / 1000, dt, now });
@@ -1573,6 +1731,8 @@ window.addEventListener('popstate', () => {
   else if (!$('cookSheet').hidden) closeCook();
   else if (!$('museumSheet').hidden) closeMuseum();
   else if (!$('mailSheet').hidden) closeMail();
+  else if (!$('houseSheet').hidden) closeHouse();
+  else if (inside) leaveHouse();
   else toast('Tryck på 🏠 för att gå hem');
 });
 
@@ -1580,4 +1740,4 @@ window.addEventListener('popstate', () => {
 for (const ev of ['click', 'touchend']) document.addEventListener(ev, unlockSpeech, { capture: true, passive: true });
 
 // Test hook for automated browser checks: open the game with ?debug.
-if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, remotes, act, vilPos, get world() { return world; }, get sim() { return sim; }, get shared() { return shared; } };
+if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, remotes, act, vilPos, get world() { return world; }, get island() { return island; }, get inside() { return inside; }, select: (id) => select(id), get sim() { return sim; }, get shared() { return shared; } };

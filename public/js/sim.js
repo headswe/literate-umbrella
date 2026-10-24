@@ -1,6 +1,6 @@
 // Game rules. The sim owns the world and turns player actions into patches.
 // In single player it runs in the browser; the LAN server will run the same code.
-import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, BUGS, COLLECTION, CROP_MS, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE, PETS, PET_FINDS, LETTERS, LETTER_GIFTS, MAIL_MS } from './data.js';
+import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, BUGS, COLLECTION, CROP_MS, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE, PETS, PET_FINDS, LETTERS, LETTER_GIFTS, MAIL_MS, ROOF_COLORS, WALL_COLORS, ROOM_SIZE, ROOM_CATS } from './data.js';
 import { generateWorld, key, mulberry32 } from './worldgen.js';
 
 export function newWorldSave(name, seed) {
@@ -107,7 +107,7 @@ export function blocks(o) {
 
 export function isWalkable(world, x, y) {
   const t = tileAt(world, x, y);
-  if (!t || t.t === T.WATER) return false;
+  if (!t || t.t === T.WATER || t.t === T.WALL) return false;
   return !blocks(world.objects[key(x, y)]);
 }
 
@@ -179,6 +179,9 @@ export class Sim {
     if (a.type === 'adopt') return this.adopt(a, pl, now);
     if (a.type === 'petfind') return this.petFind(a, pl, now);
     if (a.type === 'openmail') return this.openMail(a, pl);
+    if (a.type === 'paint') return this.paint(a);
+    if (a.type === 'roomput') return this.roomPut(a, pl);
+    if (a.type === 'roomtake') return this.roomTake(a);
     if (a.type !== 'use') return [];
     const item = a.item || 'hand';
     if (item !== 'hand' && !(pl.inv[item] > 0)) return [];
@@ -441,6 +444,45 @@ export class Sim {
     return out;
   }
 
+  // A new colour for a house's roof or walls.
+  paint(a) {
+    const out = [], w = this.world;
+    const k = key(a.x, a.y), o = w.objects[k];
+    if (!o || o.type !== 'build' || o.id !== 'house') return out;
+    const colors = a.part === 'roof' ? ROOF_COLORS : a.part === 'wall' ? WALL_COLORS : null;
+    if (!colors || !colors.includes(a.color)) return out;
+    put(out, w, { k: 'obj', key: k, v: { ...o, [a.part]: a.color } });
+    put(out, w, { k: 'fx', fx: 'painted', x: a.x, y: a.y, by: a.by });
+    return out;
+  }
+
+  // Furniture inside a house. Rooms are kept on the house itself, tile by tile.
+  roomPut(a, pl) {
+    const out = [], w = this.world;
+    const house = w.objects[a.house], def = BUILDS[a.id];
+    const fx = (name, extra) => put(out, w, { k: 'fx', fx: name, x: a.x, y: a.y, by: a.by, house: a.house, ...extra });
+    if (!house || house.id !== 'house' || !def || !ROOM_CATS.includes(def.cat)) return out;
+    if (!(a.x >= 1 && a.y >= 1 && a.x < ROOM_SIZE && a.y < ROOM_SIZE - 1)) { fx('nope'); return out; }
+    const rk = key(a.x, a.y), cur = house.room?.[rk];
+    const stack = cur && cur.id === a.id && def.stack && (cur.h || 1) < def.stack;
+    if (cur && !stack) { fx('occupied'); return out; }
+    if (!canAfford(pl.inv, def.cost)) { fx('cantafford', { id: a.id }); return out; }
+    for (const [item, n] of Object.entries(def.cost)) this.give(out, a.by, item, -n);
+    put(out, w, { k: 'room', house: a.house, key: rk, v: stack ? { ...cur, h: (cur.h || 1) + 1 } : { type: 'build', id: a.id, rot: a.rot || 0, by: a.by } });
+    fx('built');
+    return out;
+  }
+
+  roomTake(a) {
+    const out = [], w = this.world;
+    const house = w.objects[a.house], rk = key(a.x, a.y), cur = house?.room?.[rk];
+    if (!cur || cur.id === 'doormat') { put(out, w, { k: 'fx', fx: 'nope', x: a.x, y: a.y, by: a.by, house: a.house }); return out; }
+    for (const [item, n] of Object.entries(BUILDS[cur.id].cost)) this.give(out, a.by, item, n);
+    put(out, w, { k: 'room', house: a.house, key: rk, v: (cur.h || 1) > 1 ? { ...cur, h: cur.h - 1 } : null });
+    put(out, w, { k: 'fx', fx: 'pickedup', x: a.x, y: a.y, by: a.by, house: a.house, id: cur.id });
+    return out;
+  }
+
   // Reading a letter takes out the present that came with it.
   openMail(a, pl) {
     const out = [];
@@ -647,6 +689,12 @@ export function applyPatch(w, p) {
     w.terrain[y * w.size + x] = p.t;
     w.height[y * w.size + x] = p.h;
     (w.tiles || (w.tiles = {}))[p.key] = [p.t, p.h];
+  } else if (p.k === 'room') {
+    const house = w.objects[p.house];
+    if (!house) return;
+    const room = house.room || (house.room = {});
+    if (p.v) room[p.key] = p.v;
+    else delete room[p.key];
   } else if (p.k === 'mail') {
     const pl = w.players[p.pid] || (w.players[p.pid] = { inv: {} });
     pl.mail = p.mail;
