@@ -1,5 +1,5 @@
 // Boot, game loop, input and HUD.
-import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS } from './data.js';
+import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES } from './data.js';
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
 import { connect } from './net.js';
 import * as p2p from './p2p.js';
@@ -14,6 +14,8 @@ const canvas = $('game');
 const renderer = new Renderer3D(canvas, $('overlay'));
 
 const SPEED = 3.6; // tiles per second
+const FAST = 1.6;   // how much faster you run after eating
+const speed = () => SPEED * (me.boost > Date.now() ? FAST : 1);
 const ACT_COOLDOWN = 300;
 
 let world = null;     // the world being shown
@@ -349,6 +351,8 @@ function startGame(save, onServer = false) {
   $('bagSheet').hidden = true;
   $('buildSheet').hidden = true;
   $('talkSheet').hidden = true;
+  $('cookSheet').hidden = true;
+  me.boost = 0;
   ensureThumbs();
   vilPos.clear();
   renderInventory();
@@ -445,7 +449,7 @@ function renderInventory() {
 function renderBag() {
   const bag = inv();
   const use = $('bagUse'), things = $('bagThings');
-  use.innerHTML = ''; things.innerHTML = '';
+  use.innerHTML = ''; things.innerHTML = ''; $('bagFood').innerHTML = '';
   for (const id of ITEM_ORDER) {
     const n = id === 'hand' ? 1 : bag[id] || 0;
     if (!n) continue;
@@ -458,11 +462,15 @@ function renderBag() {
       b.setAttribute('aria-pressed', String(me.sel === id));
       b.onclick = () => { select(id); closeBag(); };
       use.appendChild(b);
+    } else if (ITEMS[id].eat) {
+      b.onclick = () => { act({ type: 'eat', item: id, by: me.id }); closeBag(); };
+      $('bagFood').appendChild(b);
     } else {
       b.disabled = true;
       things.appendChild(b);
     }
   }
+  $('bagFoodWrap').hidden = !$('bagFood').children.length;
   if (!things.children.length) things.innerHTML = '<p class="small-note">Tomt än så länge. Samla trä, sten och blommor!</p>';
 }
 
@@ -594,6 +602,46 @@ function handle(patches) {
         renderer.burst(p.x, p.y, z, '#b4bcc4', 20);
         if (mine) sfx.crumble();
         break;
+      case 'fish': {
+        // Cast: a bobber goes out, then something bites.
+        renderer.floatText(p.x, p.y, 0.4, '🎣', '');
+        if (mine) sfx.pop();
+        setTimeout(() => {
+          renderer.burst(p.x, p.y, 0.6, '#bfe8ff', 18);
+          renderer.floatText(p.x, p.y, 0.8, ITEMS[p.item].icon, '+1');
+          if (mine) { sfx.gain(); toast(p.item === 'puffer' ? 'En blåsfisk! 🐡 Så ovanlig!' : p.item === 'goldfish' ? 'En guldfisk! 🐠' : 'Du fick en fisk! 🐟'); }
+        }, p.delay);
+        break;
+      }
+      case 'cooked':
+        renderer.burst(p.x, p.y, z + 0.6, '#ffb347', 16);
+        renderer.floatText(p.x, p.y, z + 0.4, ITEMS[p.item].icon, '+1');
+        if (mine) { sfx.build(); renderCook(); }
+        break;
+      case 'ate': {
+        const who = p.by === me.id ? me : remotes.get(p.by);
+        if (who) renderer.floatText((who.rx ?? who.x) - 0.5, (who.ry ?? who.y) - 0.5, (who.z || 1) + 0.4, '😋', '');
+        if (mine) {
+          me.boost = Date.now() + p.secs * 1000;
+          me.swing = Date.now() + 300;
+          sfx.grow();
+          toast(`Mums! ${ITEMS[p.item].icon} Nu springer du jättesnabbt en stund! 🏃`);
+        }
+        break;
+      }
+      case 'treated': {
+        const vp = vilPos.get(p.vid);
+        if (vp) { vp.swing = Date.now() + 400; renderer.burst(vp.x - 0.5, vp.y - 0.5, vp.z + 0.5, '#ff7eb6', 16); renderer.floatText(vp.x - 0.5, vp.y - 0.5, vp.z, '❤️', '+1'); }
+        if (mine) {
+          sfx.gain();
+          say(p.vid, pick(['Mums! Tack så mycket!', `Åh, ${ITEMS[p.item].one}! Min favorit!`, 'Smaskens! Du är snäll!']));
+          if (talking === p.vid) { $('talkHearts').textContent = '❤️'.repeat(Math.min(10, world.villagers[p.vid].hearts)); updateTreat(); }
+        }
+        break;
+      }
+      case 'full':
+        if (mine) { sfx.nope(); say(p.vid, 'Jag är så mätt nu. Tack ändå! Kom tillbaka sen.'); }
+        break;
       case 'road':
         renderer.burst(p.x, p.y, z - 0.1, '#b98a5c', 12);
         if (mine) sfx.dig();
@@ -707,6 +755,7 @@ function goTalk(vid) {
 }
 
 function doAct(tx, ty, what) {
+  if (what.type === 'cookmenu') { face(tx + 0.5 - me.x, ty + 0.5 - me.y); openCook(tx, ty); return; }
   if (what.type === 'talk') {
     const v = world.villagers[what.vid];
     face(v.x - me.x, v.y - me.y);
@@ -715,7 +764,7 @@ function doAct(tx, ty, what) {
   }
   const t = performance.now();
   if (t < me.nextAct) return;
-  me.nextAct = t + ACT_COOLDOWN;
+  me.nextAct = t + (what.item === 'rod' ? 2600 : ACT_COOLDOWN);
   face(tx + 0.5 - me.x, ty + 0.5 - me.y);
   me.swing = Date.now() + 200;
   act({ ...what, x: tx, y: ty, by: me.id });
@@ -767,7 +816,12 @@ function tapAt(sx, sy) {
   if (obj && obj.type === 'buried' && inv().shovel) { if (sel !== 'shovel') select('shovel'); return goShape(x, y, 'shovel'); }
   if (sel === 'shovel' && (!obj || obj.type === 'flower') && !hit.water) return goShape(x, y, 'shovel');
   if (kind === 'place' && (!obj || obj.type === 'flower' || obj.type === 'shell')) return goShape(x, y, sel);
-  if (hit.water) { sfx.nope(); return; }
+  if (hit.water) {
+    if (!inv().rod) { sfx.nope(); return; }
+    if (sel !== 'rod') select('rod');
+    return goUse(x, y, 'rod');
+  }
+  if (obj && obj.type === 'build' && obj.id === 'campfire' && !sel.startsWith('build:') && sel !== 'pickup') return goAct(x, y, { type: 'cookmenu' });
 
   // Seeds go in soil, the hoe works on grass.
   if (kind === 'seed' && obj && obj.type === 'soil') return goUse(x, y, sel);
@@ -970,12 +1024,54 @@ function openTalk(vid) {
     give.disabled = !has;
     give.textContent = has ? `Ge ${v.wish.n} ${ITEMS[v.wish.item].icon}` : `Du har ${inv()[v.wish.item] || 0} av ${v.wish.n} ${ITEMS[v.wish.item].icon}`;
   } else give.hidden = true;
+  updateTreat();
   $('talkSheet').hidden = false;
   speak(text, info.voice);
   greetAt.set(vid, Date.now() + 60000);
   const p = vilPos.get(vid);
   if (p) { p.angle = Math.atan2(me.x - p.x, me.y - p.y); p.swing = Date.now() + 250; }
 }
+
+// ---------------------------------------------------------------- cooking and treats
+let cookAt = null;
+function openCook(x, y) {
+  cookAt = { x, y };
+  renderCook();
+  $('cookSheet').hidden = false;
+}
+function renderCook() {
+  const list = $('cookList');
+  list.innerHTML = '';
+  for (const r of RECIPES) {
+    const b = document.createElement('button');
+    b.className = 'cook-item';
+    const need = Object.entries(r.needs).map(([k, n]) => ITEMS[k].icon.repeat(n)).join(' ');
+    b.innerHTML = `<span class="need"></span><span class="arrow">→</span><span class="out"></span><span class="nm"></span>`;
+    b.children[0].textContent = need;
+    b.children[2].textContent = ITEMS[r.id].icon;
+    b.children[3].textContent = ITEMS[r.id].name;
+    b.disabled = !canAfford(inv(), r.needs);
+    b.onclick = () => cookAt && act({ type: 'cook', recipe: r.id, x: cookAt.x, y: cookAt.y, by: me.id });
+    list.appendChild(b);
+  }
+}
+function closeCook() { $('cookSheet').hidden = true; cookAt = null; }
+$('cookClose').onclick = closeCook;
+$('cookSheet').addEventListener('pointerdown', (e) => { if (e.target === $('cookSheet')) closeCook(); });
+
+// The tastiest food you carry, for treating a friend.
+function bestFood() {
+  return ['pie', 'soup', 'grilled', 'fruit'].find((id) => inv()[id] > 0) || null;
+}
+function updateTreat() {
+  const food = bestFood();
+  $('talkTreat').hidden = !food;
+  if (food) $('talkTreat').textContent = `Bjud på ${ITEMS[food].icon}`;
+}
+$('talkTreat').onclick = () => {
+  const food = bestFood();
+  if (talking && food) act({ type: 'treat', vid: talking, item: food, by: me.id });
+};
 
 function closeTalk() {
   if ($('talkSheet').hidden) return;
@@ -1076,7 +1172,7 @@ window.addEventListener('blur', () => keys.clear());
 window.addEventListener('resize', () => renderer.resize());
 
 function freeMove(dir, dt) {
-  const step = SPEED * dt;
+  const step = speed() * dt;
   const tryMove = (nx, ny) => {
     const cx = Math.floor(me.x), cy = Math.floor(me.y);
     // Look a bit ahead so we don't walk into trees.
@@ -1126,7 +1222,7 @@ function frame(t) {
       const n = me.path[0];
       const tx = n.x + 0.5, ty = n.y + 0.5;
       const dx = tx - me.x, dy = ty - me.y, d = Math.hypot(dx, dy);
-      const step = SPEED * dt;
+      const step = speed() * dt;
       if (d <= step) { me.x = tx; me.y = ty; me.path.shift(); } else { me.x += dx / d * step; me.y += dy / d * step; }
       face(dx, dy);
       me.moving = true;
@@ -1207,6 +1303,7 @@ window.addEventListener('popstate', () => {
   if (!$('talkSheet').hidden) closeTalk();
   else if (!$('bagSheet').hidden) closeBag();
   else if (!$('buildSheet').hidden) closeBuild();
+  else if (!$('cookSheet').hidden) closeCook();
   else toast('Tryck på 🏠 för att gå hem');
 });
 

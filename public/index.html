@@ -87,8 +87,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 }
 .hotbar::-webkit-scrollbar { display: none; }
 .slot {
-  /* Shrinks on narrow phones so nine slots fit without scrolling. */
-  --slot: clamp(40px, calc((100vw - 76px) / 9), 56px);
+  /* Shrinks on narrow phones so ten slots fit without scrolling. */
+  --slot: clamp(38px, calc((100vw - 80px) / 10), 56px);
   position: relative; flex: 0 0 auto; width: var(--slot); height: var(--slot); border-radius: 16px;
   background: rgba(255,255,255,0.14); display: grid; place-items: center;
 }
@@ -142,6 +142,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 .talk-text { font: 600 21px/1.35 var(--font-display); margin: 0; text-wrap: pretty; }
 .talk-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .talk-actions .big { flex: 1; min-width: 160px; font-size: 22px; padding: 14px; }
+.cook-list { display: flex; flex-direction: column; gap: 10px; }
+.cook-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 18px; background: #f1ebdc;
+  font: 600 18px var(--font-display); color: var(--ink); text-align: left;
+}
+.cook-item .need { font-size: 26px; letter-spacing: 2px; }
+.cook-item .arrow { color: #a59fbd; }
+.cook-item .out { font-size: 34px; }
+.cook-item .nm { flex: 1; }
+.cook-item:disabled { opacity: 0.5; }
 .talk-actions .big:disabled { background: #b9b3c9; box-shadow: none; }
 .thumb { width: 64px; height: 64px; display: block; image-rendering: auto; }
 .slot .thumb { width: calc(var(--slot) - 10px); height: calc(var(--slot) - 10px); }
@@ -247,7 +257,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 
 @media (max-width: 480px) {
   .hotbar { gap: 4px; padding: 4px; }
-  .slot { --slot: clamp(38px, calc((100vw - 60px) / 9), 48px); border-radius: 14px; }
+  .slot { --slot: clamp(34px, calc((100vw - 64px) / 10), 48px); border-radius: 14px; }
   .hint { font-size: 15px; bottom: calc(70px + var(--safe-b)); }
   .zoom, .turn { bottom: calc(120px + var(--safe-b)); }
   .rot-build { bottom: calc(226px + var(--safe-b)); }
@@ -302,6 +312,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
       <p class="talk-text" id="talkText"></p>
       <div class="talk-actions">
         <button class="big" id="talkGive" hidden>Ge</button>
+        <button class="chip-btn" id="talkTreat" hidden>Bjud på mat</button>
         <button class="chip-btn" id="talkBye">Hej då 👋</button>
       </div>
     </div>
@@ -311,8 +322,18 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
       <div class="bag-head"><h2>Ryggsäck</h2><button class="bag-close" id="bagClose" aria-label="Stäng">✕</button></div>
       <p class="label">Verktyg och frön</p>
       <div class="bag-grid" id="bagUse"></div>
+      <div id="bagFoodWrap" hidden>
+        <p class="label">Mat: tryck för att äta 😋</p>
+        <div class="bag-grid" id="bagFood"></div>
+      </div>
       <p class="label">Saker</p>
       <div class="bag-grid" id="bagThings"></div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="cookSheet" hidden>
+    <div class="bag-card" role="dialog" aria-label="Laga mat">
+      <div class="bag-head"><h2>Laga mat 🔥</h2><button class="bag-close" id="cookClose" aria-label="Stäng">✕</button></div>
+      <div class="cook-list" id="cookList"></div>
     </div>
   </div>
 </div>

@@ -53,6 +53,12 @@ Spelet går också att spela ensam utan server; då sparas ön i webbläsaren.
 - **Spaden:** gör grusvägar i gräset, gräver ner vägar ett steg i taget (längst ner blir
   det en damm) och gräver upp skatter där det är ett X. Jorden man får fyller hål, lagar
   vägar och bygger kullar.
+- **Fiska:** tryck på vattnet så kastar du ut spöet 🎣. Det nappar efter en liten stund:
+  fisk 🐟, guldfisk 🐠 eller en ovanlig blåsfisk 🐡.
+- **Laga mat:** tryck på en lägereld. Fisk blir grillad fisk, guldfisk och äpple blir
+  fisksoppa, tre äpplen blir äppelpaj.
+- **Äta:** mat i ryggsäcken äts med ett tryck och då springer man jättesnabbt en stund.
+  Ingen hunger; mat är bara något gott. Vänner blir glada av mat (Bjud på mat).
 - **Vinka:** 👋 vinkar. Vänner i närheten vinkar tillbaka, och vännerna vinkar till
   varandra när de möts.
 - **Bygga:** 🔨 öppnar byggmenyn. Klossar kan staplas och klättras på. ↻ vrider saken,

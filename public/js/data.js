@@ -22,6 +22,7 @@ export const ITEMS = {
   pickaxe: { icon: '⛏️', name: 'Hacka', kind: 'tool' },
   hoe: { svg: HOE, name: 'Jordhacka', kind: 'tool' },
   shovel: { svg: SHOVEL, name: 'Spade', kind: 'tool' },
+  rod: { icon: '🎣', name: 'Fiskespö', kind: 'tool' },
   seed_tree: { one: 'ett trädfrö', plural: 'trädfrön', icon: '🌰', name: 'Trädfrö', kind: 'seed', grows: 'tree' },
   seed_pine: { one: 'en kotte', plural: 'kottar', svg: PINECONE, name: 'Kotte', kind: 'seed', grows: 'pine' },
   seed_fruit: { one: 'en äppelkärna', plural: 'äppelkärnor', svg: APPLESEED, name: 'Äppelkärna', kind: 'seed', grows: 'fruittree' },
@@ -29,7 +30,14 @@ export const ITEMS = {
   dirt: { svg: DIRTPILE, one: 'en hög jord', name: 'Jord', plural: 'högar jord', kind: 'place' },
   wood: { one: 'en bit trä', icon: '🪵', name: 'Trä', plural: 'bitar trä', kind: 'material' },
   stone: { one: 'en sten', icon: '🪨', name: 'Sten', plural: 'stenar', kind: 'material' },
-  fruit: { one: 'ett äpple', icon: '🍎', name: 'Äpple', plural: 'äpplen', kind: 'material' },
+  fruit: { one: 'ett äpple', icon: '🍎', name: 'Äpple', plural: 'äpplen', kind: 'material', eat: 20 },
+  fish: { one: 'en fisk', icon: '🐟', name: 'Fisk', plural: 'fiskar', kind: 'material' },
+  goldfish: { one: 'en guldfisk', icon: '🐠', name: 'Guldfisk', plural: 'guldfiskar', kind: 'material' },
+  puffer: { one: 'en blåsfisk', icon: '🐡', name: 'Blåsfisk', plural: 'blåsfiskar', kind: 'material' },
+  // Food made at the campfire. `eat`: seconds of running fast after eating it.
+  grilled: { one: 'en grillad fisk', icon: '🍢', name: 'Grillad fisk', plural: 'grillade fiskar', kind: 'material', eat: 45 },
+  soup: { one: 'en fisksoppa', icon: '🍲', name: 'Fisksoppa', plural: 'fisksoppor', kind: 'material', eat: 60 },
+  pie: { one: 'en äppelpaj', icon: '🥧', name: 'Äppelpaj', plural: 'äppelpajer', kind: 'material', eat: 60 },
   flower: { one: 'en blomma', icon: '🌸', name: 'Blomma', plural: 'blommor', kind: 'material' },
   shell: { one: 'en snäcka', icon: '🐚', name: 'Snäcka', plural: 'snäckor', kind: 'material' },
   star: { one: 'en stjärna', icon: '⭐', name: 'Stjärna', plural: 'stjärnor', kind: 'material' },
@@ -38,9 +46,19 @@ export const ITEMS = {
 export const ITEM_ORDER = Object.keys(ITEMS);
 
 // What a brand new player carries.
-export const STARTER_KIT = { axe: 1, pickaxe: 1, hoe: 1, shovel: 1, seed_tree: 3 };
+export const STARTER_KIT = { axe: 1, pickaxe: 1, hoe: 1, shovel: 1, rod: 1, seed_tree: 3 };
 // Tools everyone should have, even on islands made before the tool existed.
-export const ALWAYS_TOOLS = ['axe', 'pickaxe', 'hoe', 'shovel'];
+export const ALWAYS_TOOLS = ['axe', 'pickaxe', 'hoe', 'shovel', 'rod'];
+
+// What the campfire can cook.
+export const RECIPES = [
+  { id: 'grilled', needs: { fish: 1 } },
+  { id: 'soup', needs: { goldfish: 1, fruit: 1 } },
+  { id: 'pie', needs: { fruit: 3 } },
+];
+
+// What bites when you fish, and how often.
+export const CATCH = [['fish', 0.68], ['goldfish', 0.24], ['puffer', 0.08]];
 // Highest a hill can be built.
 export const MAX_HEIGHT = 4;
 

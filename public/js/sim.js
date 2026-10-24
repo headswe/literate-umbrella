@@ -1,6 +1,6 @@
 // Game rules. The sim owns the world and turns player actions into patches.
 // In single player it runs in the browser; the LAN server will run the same code.
-import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE } from './data.js';
+import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE } from './data.js';
 import { generateWorld, key, mulberry32 } from './worldgen.js';
 
 export function newWorldSave(name, seed) {
@@ -163,6 +163,9 @@ export class Sim {
     if (a.type === 'build') return this.build(a, pl, now);
     if (a.type === 'pickup') return this.pickup(a);
     if (a.type === 'give') return this.giveWish(a, pl, now);
+    if (a.type === 'cook') return this.cook(a, pl);
+    if (a.type === 'eat') return this.eat(a, pl);
+    if (a.type === 'treat') return this.treat(a, pl, now);
     if (a.type !== 'use') return [];
     const item = a.item || 'hand';
     if (item !== 'hand' && !(pl.inv[item] > 0)) return [];
@@ -212,6 +215,13 @@ export class Sim {
         put(out, w, { k: 'obj', key: k, v: { type: 'soil' } });
         fx('till');
       } else fx('nope');
+    } else if (item === 'rod') {
+      const t = tileAt(w, a.x, a.y);
+      if (!t || t.t !== T.WATER) { fx('nope'); return out; }
+      let r = this.rand(), got = CATCH[0][0];
+      for (const [id, p] of CATCH) { if (r < p) { got = id; break; } r -= p; }
+      this.give(out, a.by, got, 1);
+      fx('fish', { item: got, n: 1, delay: 1500 + Math.floor(this.rand() * 1200) });
     } else if (item === 'shovel') {
       this.dig(out, a, o, fx);
     } else if (item === 'dirt') {
@@ -345,6 +355,41 @@ export class Sim {
     return out;
   }
 
+  // Campfire: turn fish and apples into food.
+  cook(a, pl) {
+    const out = [];
+    const r = RECIPES.find((x) => x.id === a.recipe);
+    const o = this.world.objects[key(a.x, a.y)];
+    if (!r || !o || o.type !== 'build' || o.id !== 'campfire') return out;
+    if (!canAfford(pl.inv, r.needs)) { put(out, this.world, { k: 'fx', fx: 'nope', x: a.x, y: a.y, by: a.by }); return out; }
+    for (const [item, n] of Object.entries(r.needs)) this.give(out, a.by, item, -n);
+    this.give(out, a.by, r.id, 1);
+    put(out, this.world, { k: 'fx', fx: 'cooked', x: a.x, y: a.y, by: a.by, item: r.id });
+    return out;
+  }
+
+  // Eating is a treat: you run fast for a while. Nothing bad happens if you never eat.
+  eat(a, pl) {
+    const out = [];
+    const def = ITEMS[a.item];
+    if (!def?.eat || !(pl.inv[a.item] > 0)) return out;
+    this.give(out, a.by, a.item, -1);
+    put(out, this.world, { k: 'fx', fx: 'ate', by: a.by, item: a.item, secs: def.eat });
+    return out;
+  }
+
+  // Give a friend some food just because. They love it.
+  treat(a, pl, now) {
+    const out = [];
+    const vil = this.world.villagers?.[a.vid];
+    if (!vil || !ITEMS[a.item]?.eat || !(pl.inv[a.item] > 0)) return out;
+    if (vil.treatAt > now) { put(out, this.world, { k: 'fx', fx: 'full', vid: vil.id, by: a.by }); return out; }
+    this.give(out, a.by, a.item, -1);
+    put(out, this.world, { k: 'vil', id: vil.id, v: { ...vil, hearts: vil.hearts + 1, treatAt: now + 60000 } });
+    put(out, this.world, { k: 'fx', fx: 'treated', vid: vil.id, by: a.by, item: a.item });
+    return out;
+  }
+
   fulfil(out, vil, by, now) {
     const hearts = vil.hearts + 1;
     const stars = hearts % 3 === 0 ? 2 : 1;
@@ -362,9 +407,11 @@ export class Sim {
       const id = info.likes[Math.floor(this.rand() * info.likes.length)];
       return { kind: 'build', id };
     }
-    const items = ['wood', 'stone', 'fruit', 'flower', 'shell'];
+    const items = ['wood', 'stone', 'fruit', 'flower', 'shell', 'fish', 'goldfish', 'grilled', 'pie', 'soup'];
     const item = items[Math.floor(this.rand() * items.length)];
-    return { kind: 'give', item, n: 1 + Math.floor(this.rand() * 3) };
+    // Cooked food and goldfish take more work, so one is enough.
+    const one = ITEMS[item].eat > 20 || item === 'goldfish';
+    return { kind: 'give', item, n: one ? 1 : 1 + Math.floor(this.rand() * 3) };
   }
 
   // Villagers stroll around their home, think up wishes, and new ones move into empty houses.
