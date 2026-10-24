@@ -116,15 +116,20 @@ export class Renderer3D {
   buildTerrain(w) {
     const N = w.size, tx = this.tex;
     const L = (map) => new THREE.MeshLambertMaterial({ map });
+    // Everything made here is remembered, so a dug or filled tile can rebuild just the ground.
+    const before = this.layers.length;
     const grassMats = [L(tx.grassSide), L(tx.grassSide), L(tx.grassTop), L(tx.dirt), L(tx.grassSide), L(tx.grassSide)];
-    let grassN = 0, dirtN = 0, sandN = 0;
+    const roadMats = [L(tx.dirt), L(tx.dirt), L(tx.road), L(tx.dirt), L(tx.dirt), L(tx.dirt)];
+    let grassN = 0, dirtN = 0, sandN = 0, roadN = 0;
     for (let i = 0; i < N * N; i++) {
       if (w.terrain[i] === T.GRASS) { grassN++; dirtN += w.height[i]; } else if (w.terrain[i] === T.SAND) sandN += w.height[i];
+      else if (w.terrain[i] === T.DIRT) { roadN++; dirtN += w.height[i]; }
     }
     const grass = this.instanced(grassMats, grassN);
     const dirt = this.instanced(L(tx.dirt), dirtN);
     const sand = this.instanced(L(tx.sand), sandN);
-    grass.userData.tiles = []; dirt.userData.tiles = []; sand.userData.tiles = [];
+    const road = this.instanced(roadMats, roadN);
+    grass.userData.tiles = []; dirt.userData.tiles = []; sand.userData.tiles = []; road.userData.tiles = [];
 
     const put = (mesh, x, y, level, shade) => {
       this.tmp.position.set(x + 0.5, level + 0.5, y + 0.5);
@@ -144,6 +149,9 @@ export class Renderer3D {
         if (t === T.GRASS) {
           for (let l = 0; l < h - 1; l++) put(dirt, x, y, l, 0.92);
           put(grass, x, y, h - 1, shade);
+        } else if (t === T.DIRT) {
+          for (let l = 0; l < h - 1; l++) put(dirt, x, y, l, 0.92);
+          put(road, x, y, h - 1, shade);
         } else if (t === T.SAND) {
           for (let l = 0; l < h; l++) put(sand, x, y, l, l === h - 1 ? shade : 0.9);
         } else {
@@ -152,8 +160,8 @@ export class Renderer3D {
         }
       }
     }
-    for (const m of [grass, dirt, sand]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }
-    this.terrainMeshes = [grass, dirt, sand];
+    for (const m of [grass, dirt, sand, road]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.computeBoundingSphere(); }
+    this.terrainMeshes = [grass, dirt, sand, road];
 
     // Sea floor and water.
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(N + 160, N + 160), new THREE.MeshLambertMaterial({ color: '#e3cf8e' }));
@@ -185,6 +193,21 @@ export class Renderer3D {
     this.tmp.rotation.set(0, 0, 0);
     this.scene.add(foamMesh); this.layers.push(foamMesh);
     this.foam = foamMesh;
+    this.terrainLayers = this.layers.splice(before);
+    this.layers.push(...this.terrainLayers);
+  }
+
+  // The ground changed (dug, filled): rebuild only the terrain.
+  rebuildTerrain() {
+    if (!this.world) return;
+    for (const l of this.terrainLayers || []) {
+      this.scene.remove(l);
+      l.dispose?.();
+      const i = this.layers.indexOf(l);
+      if (i >= 0) this.layers.splice(i, 1);
+    }
+    this.buildTerrain(this.world);
+    this.natureDirty = true;
   }
 
   buildNature() {
@@ -329,7 +352,12 @@ export class Renderer3D {
         return { x: t.x, y: t.y, obj: this.world.objects[key(t.x, t.y)] || null };
       }
     }
-    return null;
+    // Water has no blocks; use where the ray meets the water surface.
+    const g = this.groundPoint(sx, sy, WATER_Y);
+    if (!g) return null;
+    const x = Math.floor(g.x), y = Math.floor(g.y);
+    if (x < 0 || y < 0 || x >= this.world.size || y >= this.world.size) return null;
+    return { x, y, obj: null, water: true };
   }
 
   // Where the pointer meets a flat floor at height h, in tile coordinates.
@@ -367,7 +395,7 @@ export class Renderer3D {
       const hop = p.swing && p.swing > Date.now() ? Math.sin((p.swing - Date.now()) / 200 * Math.PI) * 0.15 : 0;
       c.root.position.set(p.x, p.z + hop, p.y);
       c.root.rotation.y = c.angle;
-      c.update(dt, p.moving, t);
+      c.update(dt, p.moving, t, p.wave > Date.now());
 
       let tag = this.tags.get(p.id);
       if (p.name) {

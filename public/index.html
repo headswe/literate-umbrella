@@ -87,10 +87,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 }
 .hotbar::-webkit-scrollbar { display: none; }
 .slot {
-  position: relative; flex: 0 0 auto; width: 56px; height: 56px; border-radius: 16px;
+  /* Shrinks on narrow phones so nine slots fit without scrolling. */
+  --slot: clamp(40px, calc((100vw - 76px) / 9), 56px);
+  position: relative; flex: 0 0 auto; width: var(--slot); height: var(--slot); border-radius: 16px;
   background: rgba(255,255,255,0.14); display: grid; place-items: center;
 }
-.slot .ic { font-size: 30px; line-height: 1; display: grid; place-items: center; }
+.slot .ic { font-size: calc(var(--slot) * 0.54); line-height: 1; display: grid; place-items: center; }
 .ic svg { width: 1em; height: 1em; display: block; }
 .slot .n {
   position: absolute; right: 3px; bottom: 1px; font: 700 15px var(--font-display); color: #fff;
@@ -142,7 +144,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 .talk-actions .big { flex: 1; min-width: 160px; font-size: 22px; padding: 14px; }
 .talk-actions .big:disabled { background: #b9b3c9; box-shadow: none; }
 .thumb { width: 64px; height: 64px; display: block; image-rendering: auto; }
-.slot .thumb { width: 46px; height: 46px; }
+.slot .thumb { width: calc(var(--slot) - 10px); height: calc(var(--slot) - 10px); }
 .build-item .nm { text-align: center; line-height: 1.1; }
 .build-item .cost { display: flex; gap: 4px; font: 700 13px var(--font-body); color: var(--ink); font-variant-numeric: tabular-nums; }
 .build-item .cost .short { color: #c0392b; }
@@ -245,8 +247,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 
 @media (max-width: 480px) {
   .hotbar { gap: 4px; padding: 4px; }
-  .slot { width: 48px; height: 48px; border-radius: 14px; }
-  .slot .ic { font-size: 26px; }
+  .slot { --slot: clamp(38px, calc((100vw - 60px) / 9), 48px); border-radius: 14px; }
   .hint { font-size: 15px; bottom: calc(70px + var(--safe-b)); }
   .zoom, .turn { bottom: calc(120px + var(--safe-b)); }
   .rot-build { bottom: calc(226px + var(--safe-b)); }
@@ -262,7 +263,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
   <div class="hud-top">
     <div class="pill island-name" id="islandName">Mysön</div>
     <div class="hud-buttons">
-      <button class="pill round" id="inviteBtn" aria-label="Bjud in en kompis" aria-pressed="false">👋</button>
+      <button class="pill round" id="waveBtn" aria-label="Vinka">👋</button>
+      <button class="pill round" id="inviteBtn" aria-label="Bjud in en kompis" aria-pressed="false">👫</button>
       <button class="pill round" id="muteBtn" aria-label="Ljud av/på">🔊</button>
       <button class="pill round" id="homeBtn" aria-label="Till start">🏠</button>
     </div>
@@ -343,7 +345,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
         <input class="name-input" id="joinCode" maxlength="12" placeholder="Kod, t.ex. SOL-42" autocomplete="off" autocapitalize="characters" spellcheck="false">
         <button class="big blue" id="joinBtn">Gå med</button>
       </div>
-      <p class="small-note" id="joinNote">Kompisen trycker på 👋 på sin ö och läser upp koden.</p>
+      <p class="small-note" id="joinNote">Kompisen trycker på 👫 på sin ö och läser upp koden.</p>
     </div>
     <div id="sharedWrap" class="shared-wrap" hidden>
       <p class="label">Tillsammans på wifi:t</p>

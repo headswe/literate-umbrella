@@ -180,12 +180,17 @@ function finish(root, bodyG, head, legs, tail, biped) {
   let phase = 0;
   return {
     root,
-    update(dt, moving, t) {
+    // `waving`: lift a front paw (a hand, for the robot) and wiggle it hello.
+    update(dt, moving, t, waving = false) {
       if (moving) phase += dt * 13;
       const swing = moving ? Math.sin(phase) * 0.7 : 0;
+      const k = Math.min(1, dt * 20);
       legs.forEach((l, i) => {
-        const s = biped ? (i ? -swing : swing) : (i === 0 || i === 3 ? swing : -swing);
-        l.rotation.x += (s - l.rotation.x) * Math.min(1, dt * 20);
+        let s = biped ? (i ? -swing : swing) : (i === 0 || i === 3 ? swing : -swing);
+        let wz = 0;
+        if (waving && i === 1) { s = -2.3; wz = Math.sin(t * 16) * 0.45; }
+        l.rotation.x += (s - l.rotation.x) * k;
+        l.rotation.z += (wz - l.rotation.z) * k;
       });
       bodyG.position.y = moving ? Math.abs(Math.sin(phase)) * 0.05 : Math.sin(t * 2) * 0.01;
       head.rotation.z = moving ? 0 : Math.sin(t * 1.3) * 0.05;

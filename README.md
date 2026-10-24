@@ -15,7 +15,7 @@ Chromes meny → Installera app). iPad/iPhone: dela-knappen i Safari → **Lägg
 hemskärmen**. Bakåt-knappen stänger menyer i stället för att lämna spelet. Vill man låsa
 iPaden helt till spelet finns **Guidad åtkomst** under Inställningar → Hjälpmedel.
 
-**Spela med en kompis utan dator:** den som har ön trycker på 👋 och läser upp koden,
+**Spela med en kompis utan dator:** den som har ön trycker på 👫 och läser upp koden,
 till exempel `SOL-42`. Kompisen skriver koden under **Gå till en kompis ö** och trycker
 **Gå med**. Telefonerna försöker prata direkt med varandra (WebRTC via PeerJS). Om
 wifi:t stoppar det går meddelandena i stället genom en gratis publik MQTT-server
@@ -50,6 +50,11 @@ Spelet går också att spela ensam utan server; då sparas ön i webbläsaren.
 - **Samla:** yxan fäller träd (de ger trä och frön), hackan bryter sten, handen plockar
   blommor, snäckor och äpplen. Rätt verktyg väljs av sig självt när man trycker.
 - **Odla:** jordhackan gör jord i gräset, frön planteras i jorden och blir träd på en minut.
+- **Spaden:** gör grusvägar i gräset, gräver ner vägar ett steg i taget (längst ner blir
+  det en damm) och gräver upp skatter där det är ett X. Jorden man får fyller hål, lagar
+  vägar och bygger kullar.
+- **Vinka:** 👋 vinkar. Vänner i närheten vinkar tillbaka, och vännerna vinkar till
+  varandra när de möts.
 - **Bygga:** 🔨 öppnar byggmenyn. Klossar kan staplas och klättras på. ↻ vrider saken,
   ♻️ plockar upp den igen och ger tillbaka materialet.
 - **Vänner:** Stjärna bor i ett tält från början. Bygg ett hus så flyttar en ny vän in.

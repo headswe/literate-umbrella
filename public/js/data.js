@@ -1,6 +1,8 @@
 // Shared game data. Plain objects so both the browser and the server can import it.
 
-export const WORLD_SIZE = 44;
+export const WORLD_SIZE = 60;
+// Islands made before the island grew keep their old size.
+export const OLD_WORLD_SIZE = 44;
 
 // Terrain kinds stored per tile.
 export const T = { WATER: 0, SAND: 1, GRASS: 2, DIRT: 3 };
@@ -9,6 +11,8 @@ export const T = { WATER: 0, SAND: 1, GRASS: 2, DIRT: 3 };
 const svg = (body) => `<svg viewBox="0 0 16 16" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 const HOE = svg('<rect x="2" y="13" width="2" height="2" fill="#6e4527"/><rect x="3" y="11" width="2" height="2" fill="#8a5a34"/><rect x="5" y="9" width="2" height="2" fill="#8a5a34"/><rect x="7" y="7" width="2" height="2" fill="#8a5a34"/><rect x="9" y="5" width="2" height="2" fill="#8a5a34"/><rect x="9" y="1" width="6" height="3" fill="#b4bcc4"/><rect x="13" y="4" width="2" height="4" fill="#9aa3ad"/><rect x="10" y="2" width="4" height="1" fill="#e3e8ee"/>');
 const PINECONE = svg('<rect x="7" y="1" width="2" height="2" fill="#3f9c3f"/><rect x="5" y="3" width="6" height="2" fill="#8a5a34"/><rect x="4" y="5" width="8" height="2" fill="#a5754d"/><rect x="4" y="7" width="8" height="2" fill="#8a5a34"/><rect x="5" y="9" width="6" height="2" fill="#a5754d"/><rect x="6" y="11" width="4" height="2" fill="#8a5a34"/><rect x="7" y="13" width="2" height="1" fill="#6e4527"/>');
+const SHOVEL = svg('<rect x="11" y="1" width="4" height="2" fill="#6e4527"/><rect x="12" y="3" width="2" height="1" fill="#6e4527"/><rect x="10" y="3" width="3" height="3" fill="#a5754d"/><rect x="8" y="5" width="3" height="3" fill="#8a5a34"/><rect x="6" y="7" width="3" height="2" fill="#a5754d"/><rect x="1" y="8" width="6" height="5" fill="#b4bcc4"/><rect x="2" y="13" width="4" height="2" fill="#9aa3ad"/><rect x="2" y="9" width="2" height="3" fill="#e3e8ee"/><rect x="3" y="15" width="2" height="1" fill="#9aa3ad"/>');
+const DIRTPILE = svg('<rect x="6" y="5" width="4" height="2" fill="#a5754d"/><rect x="4" y="7" width="8" height="2" fill="#8f6140"/><rect x="2" y="9" width="12" height="3" fill="#86593a"/><rect x="1" y="12" width="14" height="2" fill="#6e4527"/><rect x="7" y="6" width="1" height="1" fill="#c99a63"/><rect x="5" y="9" width="1" height="1" fill="#c99a63"/><rect x="10" y="10" width="1" height="1" fill="#c99a63"/>');
 const APPLESEED = svg('<rect x="6" y="2" width="4" height="2" fill="#5cbf52"/><rect x="5" y="4" width="6" height="3" fill="#6e4527"/><rect x="4" y="7" width="8" height="4" fill="#8a5a34"/><rect x="5" y="11" width="6" height="2" fill="#6e4527"/><rect x="6" y="8" width="2" height="2" fill="#c99a63"/>');
 
 // Everything that can be in an inventory. `kind` decides how it is used.
@@ -17,9 +21,12 @@ export const ITEMS = {
   axe: { icon: '🪓', name: 'Yxa', kind: 'tool' },
   pickaxe: { icon: '⛏️', name: 'Hacka', kind: 'tool' },
   hoe: { svg: HOE, name: 'Jordhacka', kind: 'tool' },
-  seed_tree: { icon: '🌰', name: 'Trädfrö', kind: 'seed', grows: 'tree' },
-  seed_pine: { svg: PINECONE, name: 'Kotte', kind: 'seed', grows: 'pine' },
-  seed_fruit: { svg: APPLESEED, name: 'Äppelkärna', kind: 'seed', grows: 'fruittree' },
+  shovel: { svg: SHOVEL, name: 'Spade', kind: 'tool' },
+  seed_tree: { one: 'ett trädfrö', plural: 'trädfrön', icon: '🌰', name: 'Trädfrö', kind: 'seed', grows: 'tree' },
+  seed_pine: { one: 'en kotte', plural: 'kottar', svg: PINECONE, name: 'Kotte', kind: 'seed', grows: 'pine' },
+  seed_fruit: { one: 'en äppelkärna', plural: 'äppelkärnor', svg: APPLESEED, name: 'Äppelkärna', kind: 'seed', grows: 'fruittree' },
+  // Dug-up earth. Put it down to fill a hole, mend a road or build a hill.
+  dirt: { svg: DIRTPILE, one: 'en hög jord', name: 'Jord', plural: 'högar jord', kind: 'place' },
   wood: { one: 'en bit trä', icon: '🪵', name: 'Trä', plural: 'bitar trä', kind: 'material' },
   stone: { one: 'en sten', icon: '🪨', name: 'Sten', plural: 'stenar', kind: 'material' },
   fruit: { one: 'ett äpple', icon: '🍎', name: 'Äpple', plural: 'äpplen', kind: 'material' },
@@ -31,7 +38,11 @@ export const ITEMS = {
 export const ITEM_ORDER = Object.keys(ITEMS);
 
 // What a brand new player carries.
-export const STARTER_KIT = { axe: 1, pickaxe: 1, hoe: 1, seed_tree: 3 };
+export const STARTER_KIT = { axe: 1, pickaxe: 1, hoe: 1, shovel: 1, seed_tree: 3 };
+// Tools everyone should have, even on islands made before the tool existed.
+export const ALWAYS_TOOLS = ['axe', 'pickaxe', 'hoe', 'shovel'];
+// Highest a hill can be built.
+export const MAX_HEIGHT = 4;
 
 // Things on the island. `tool` is what you tap them with, `hp` how many hits before they are gone.
 export const NATURE = {
@@ -42,6 +53,8 @@ export const NATURE = {
   flower: { tool: 'hand', gives: 'flower', hp: 1, blocks: false },
   shell: { tool: 'hand', gives: 'shell', hp: 1, blocks: false },
   soil: { blocks: false },
+  // An X in the grass: something is buried here. Dig with the spade.
+  buried: { blocks: false },
   sapling: { blocks: false },
 };
 

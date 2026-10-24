@@ -29,6 +29,7 @@ let dirty = false;
 let lastSave = 0;
 let marker = null;
 let hintShown = true;
+let terrainDirty = false; // dug or filled ground waiting to be redrawn
 
 const profile = store.loadProfile();
 const kindOf = (a) => (AVATARS.find((v) => v.id === a || v.icon === a) || AVATARS[0]).id;
@@ -36,6 +37,7 @@ if (!profile.id) profile.id = 'p' + Math.random().toString(36).slice(2, 10);
 const me = {
   id: profile.id, x: 0, y: 0, z: 1, kind: kindOf(profile.avatar), name: profile.name || '',
   angle: 0, moving: false, path: null, action: null, swing: 0, nextAct: 0, sel: 'hand', rot: 0,
+  wave: 0, waveN: 0, // waving until this time; waveN counts waves so friends' screens notice a new one
 };
 const inv = () => world.players[me.id].inv;
 
@@ -141,7 +143,7 @@ function onNet(m) {
     if (playing && r) toast(`${r.name || 'En kompis'} gick hem`);
   } else if (m.t === 'pos') {
     const r = remotes.get(m.id);
-    if (r) Object.assign(r, m);
+    if (r) { sawWave(r, m.waveN); Object.assign(r, m); }
   } else if (m.t === 'patches' && playing && shared) {
     for (const p of m.ps) applyPatch(world, p);
     handle(m.ps);
@@ -231,9 +233,9 @@ function onGuest(conn, m) {
   if (m.t === 'act' && m.a && typeof m.a === 'object') {
     share(sim.act({ ...m.a, by: p.id }));
   } else if (m.t === 'pos') {
-    const pos = { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0 };
+    const pos = { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0, waveN: +m.waveN || 0 };
     const r = remotes.get(p.id);
-    if (r) Object.assign(r, pos);
+    if (r) { sawWave(r, pos.waveN); Object.assign(r, pos); }
     const pl = world.players[p.id];
     if (pl) { pl.x = pos.x; pl.y = pos.y; }
     hosting.broadcast({ t: 'pos', id: p.id, ...pos }, conn);
@@ -390,7 +392,7 @@ const iconHTML = (id) => {
   const it = ITEMS[id];
   return `<span class="ic" aria-hidden="true">${it.svg || it.icon}</span>`;
 };
-const usable = (id) => ITEMS[id].kind === 'tool' || ITEMS[id].kind === 'seed';
+const usable = (id) => ['tool', 'seed', 'place'].includes(ITEMS[id].kind);
 
 // Hotbar: hand, tools and seeds you have. Materials live in the backpack.
 function renderInventory() {
@@ -405,7 +407,7 @@ function renderInventory() {
     b.dataset.id = id;
     b.setAttribute('aria-label', ITEMS[id].name);
     b.setAttribute('aria-pressed', String(me.sel === id));
-    b.innerHTML = iconHTML(id) + (ITEMS[id].kind === 'seed' ? `<span class="n">${bag[id]}</span>` : '');
+    b.innerHTML = iconHTML(id) + (ITEMS[id].kind === 'seed' || ITEMS[id].kind === 'place' ? `<span class="n">${bag[id]}</span>` : '');
     b.onclick = () => select(id);
     bar.appendChild(b);
   }
@@ -563,6 +565,7 @@ const SAY = {
 function handle(patches) {
   for (const p of patches) {
     if (p.k === 'obj') { dirty = true; renderer.markDirty(); }
+    if (p.k === 'tile') { dirty = true; terrainDirty = true; }
     if (p.k === 'inv') { dirty = true; if (p.pid === me.id) bump(p.item); }
     if (p.k !== 'fx') continue;
     const z = heightAt(world, p.x, p.y);
@@ -590,6 +593,27 @@ function handle(patches) {
       case 'break':
         renderer.burst(p.x, p.y, z, '#b4bcc4', 20);
         if (mine) sfx.crumble();
+        break;
+      case 'road':
+        renderer.burst(p.x, p.y, z - 0.1, '#b98a5c', 12);
+        if (mine) sfx.dig();
+        break;
+      case 'dig':
+        renderer.burst(p.x, p.y, z + 0.4, '#8f6140', 14);
+        renderer.floatText(p.x, p.y, z + 0.5, '🟫', '+1');
+        if (mine) sfx.dig();
+        break;
+      case 'fill':
+        renderer.burst(p.x, p.y, z - 0.2, '#6fc24e', 12);
+        if (mine) sfx.build();
+        break;
+      case 'toohigh':
+        if (mine) { sfx.nope(); toast('Högre än så går det inte'); }
+        break;
+      case 'treasure':
+        renderer.burst(p.x, p.y, z + 0.2, '#ffd23f', 36);
+        renderer.floatText(p.x, p.y, z + 0.6, '⭐', '+' + p.n);
+        if (mine) { sfx.grow(); setTimeout(sfx.gain, 200); toast(`Du hittade en skatt! ⭐⭐ och ${amount(p.loot, 1)}`); }
         break;
       case 'till':
         renderer.burst(p.x, p.y, z - 0.6, '#6b4329', 12);
@@ -707,6 +731,14 @@ function goAct(x, y, act) {
 }
 const goUse = (x, y, item) => goAct(x, y, { type: 'use', item });
 
+// Digging or filling the tile you stand on: step next to it first, so you don't end up in a pond.
+function goShape(x, y, item) {
+  if (Math.floor(me.x) !== x || Math.floor(me.y) !== y) return goUse(x, y, item);
+  const path = findPath(world, x, y, (ax, ay) => (ax !== x || ay !== y) && Math.abs(ax - x) <= 1 && Math.abs(ay - y) <= 1, x, y);
+  if (!path) { sfx.nope(); return; }
+  me.path = path; me.action = { x, y, act: { type: 'use', item } }; marker = { x, y };
+}
+
 function tapAt(sx, sy) {
   if (!playing) return;
   const actor = renderer.pickActor(sx, sy);
@@ -730,6 +762,12 @@ function tapAt(sx, sy) {
   if (sel === 'pickup') {
     if (obj && obj.type === 'build') return goAct(x, y, { type: 'pickup' });
   }
+
+  // The spade digs treasure, roads and ponds; earth fills holes and builds hills.
+  if (obj && obj.type === 'buried' && inv().shovel) { if (sel !== 'shovel') select('shovel'); return goShape(x, y, 'shovel'); }
+  if (sel === 'shovel' && (!obj || obj.type === 'flower') && !hit.water) return goShape(x, y, 'shovel');
+  if (kind === 'place' && (!obj || obj.type === 'flower' || obj.type === 'shell')) return goShape(x, y, sel);
+  if (hit.water) { sfx.nope(); return; }
 
   // Seeds go in soil, the hoe works on grass.
   if (kind === 'seed' && obj && obj.type === 'soil') return goUse(x, y, sel);
@@ -755,7 +793,7 @@ let lastPos = 0, lastSent = '';
 function sendPos(t) {
   if (t - lastPos < 100) return;
   lastPos = t;
-  const msg = { t: 'pos', x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), angle: +me.angle.toFixed(2), moving: me.moving, swing: me.swing };
+  const msg = { t: 'pos', x: +me.x.toFixed(2), y: +me.y.toFixed(2), z: +me.z.toFixed(2), angle: +me.angle.toFixed(2), moving: me.moving, swing: me.swing, waveN: me.waveN };
   const sig = JSON.stringify(msg);
   if (sig === lastSent && !me.moving) return;
   lastSent = sig;
@@ -769,7 +807,7 @@ function remoteActors(dt) {
     const k = Math.min(1, dt * 12);
     r.rx += (r.x - r.rx) * k; r.ry += (r.y - r.ry) * k;
     if (Math.hypot(r.x - r.rx, r.y - r.ry) > 4) { r.rx = r.x; r.ry = r.y; }
-    out.push({ id: 'p:' + r.id, kind: r.kind, x: r.rx, y: r.ry, z: r.z, angle: r.angle, moving: r.moving, name: r.name || '🙂', swing: r.swing });
+    out.push({ id: 'p:' + r.id, kind: r.kind, x: r.rx, y: r.ry, z: r.z, angle: r.angle, moving: r.moving, name: r.name || '🙂', swing: r.swing, wave: r.wave });
   }
   return out;
 }
@@ -800,7 +838,7 @@ function villagerActors(dt) {
     p.z = (p.z ?? heightAt(world, Math.floor(p.x), Math.floor(p.y)));
     p.z += (heightAt(world, Math.floor(p.x), Math.floor(p.y)) - p.z) * Math.min(1, dt * 12);
     const bubble = p.sayUntil > Date.now() ? `<span class="say">${escapeHtml(p.sayText)}</span>` : wishBubble(v);
-    out.push({ id: 'v:' + v.id, kind: VIL[v.id].kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving, name: VIL[v.id].name, bubble, swing: p.swing });
+    out.push({ id: 'v:' + v.id, kind: VIL[v.id].kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving: moving && !(p.wave > Date.now()), name: VIL[v.id].name, bubble, swing: p.swing, wave: p.wave });
   }
   return out;
 }
@@ -844,6 +882,61 @@ function say(vid, text, polite = false) {
   speak(text, VIL[vid].voice, polite);
 }
 
+// ---------------------------------------------------------------- waving
+const WAVE_MS = 1800;
+
+function doWave() {
+  if (!playing) return;
+  const now = Date.now();
+  if (me.wave > now) return;
+  me.wave = now + WAVE_MS;
+  me.waveN++;
+  me.path = null; marker = null;
+  sfx.pop();
+  renderer.floatText(me.x - 0.5, me.y - 0.5, me.z + 0.6, '👋', '');
+  // Friends nearby wave back, the closest one says hello.
+  const near = Object.values(world.villagers || {})
+    .map((v) => ({ v, p: vilPos.get(v.id) }))
+    .filter(({ p }) => p && Math.hypot(p.x - me.x, p.y - me.y) < 8)
+    .sort((a, b) => Math.hypot(a.p.x - me.x, a.p.y - me.y) - Math.hypot(b.p.x - me.x, b.p.y - me.y));
+  near.slice(0, 4).forEach(({ v, p }, i) => setTimeout(() => {
+    p.angle = Math.atan2(me.x - p.x, me.y - p.y);
+    p.wave = Date.now() + WAVE_MS;
+    if (i === 0 && !talking) say(v.id, pick(['Hej hej!', `Hej ${me.name || 'kompis'}!`, 'Hallå där!', 'Hejsan!']));
+  }, 300 + i * 250));
+  nextChat = now + 6000;
+}
+$('waveBtn').onclick = doWave;
+
+// A friend on another device waved: show it here too.
+function sawWave(r, n) {
+  if (n === undefined || n === r.waveN) return;
+  if (r.waveN !== undefined) {
+    r.wave = Date.now() + WAVE_MS;
+    renderer.floatText(r.rx - 0.5, r.ry - 0.5, (r.z || 1) + 0.6, '👋', '');
+  }
+}
+
+// Villagers who meet on their walks wave to each other.
+const metAt = new Map();
+function villagersMeet(now) {
+  const list = [...vilPos.entries()];
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const [ia, a] = list[i], [ib, b] = list[j];
+      const pair = ia < ib ? ia + ib : ib + ia;
+      if (Math.hypot(a.x - b.x, a.y - b.y) > 2.2 || (metAt.get(pair) || 0) > now) continue;
+      metAt.set(pair, now + 45000);
+      a.angle = Math.atan2(b.x - a.x, b.y - a.y);
+      b.angle = Math.atan2(a.x - b.x, a.y - b.y);
+      a.wave = now + WAVE_MS;
+      setTimeout(() => { b.wave = Date.now() + WAVE_MS; }, 350);
+      // Only say it out loud when you are close enough to hear.
+      if (Math.hypot(a.x - me.x, a.y - me.y) < 6) say(ia, `Hej ${VIL[ib].name}!`, true);
+    }
+  }
+}
+
 // Friends say hello when you walk past, now and then, but never all at once.
 function greetNearby(now) {
   if (now < nextChat || talking || isSpeaking()) return;
@@ -853,6 +946,7 @@ function greetNearby(now) {
     const hello = pick(GREET[VIL[v.id].kind] || HELLO).replace('{namn}', me.name || 'kompis');
     say(v.id, Math.random() < 0.35 ? `${hello} ${pick(CHAT)}` : hello, true);
     p.angle = Math.atan2(me.x - p.x, me.y - p.y);
+    p.wave = now + 1600;
     p.swing = now + 300;
     greetAt.set(v.id, now + 60000);
     nextChat = now + 9000;
@@ -1057,6 +1151,8 @@ function frame(t) {
     if (shared || hosting) sendPos(t);
     if (dirty && t - lastSave > 4000) { save(); lastSave = t; }
     greetNearby(now);
+    villagersMeet(now);
+    if (terrainDirty) { terrainDirty = false; renderer.rebuildTerrain(); }
     renderer.render({ players: [me, ...remoteActors(dt), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
   } else if (world) {
     renderer.yawTarget += dt * 0.12;

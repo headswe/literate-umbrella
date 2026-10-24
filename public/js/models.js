@@ -123,6 +123,13 @@ export function drawNature(ps, k, o, x, y, z, now, dx = 0) {
     case 'soil':
       p('soil', k, x + 0.04, y + 0.04, z, 0.92, 0.92, 0.05);
       break;
+    case 'buried':
+      // A little X of dug-over earth, like on a treasure map.
+      for (let i = 0; i < 5; i++) {
+        p('solid', k, x + 0.18 + i * 0.13, y + 0.18 + i * 0.13, z, 0.12, 0.12, 0.03, '#7a4b2a');
+        p('solid', k, x + 0.7 - i * 0.13, y + 0.18 + i * 0.13, z, 0.12, 0.12, 0.03, '#7a4b2a');
+      }
+      break;
     case 'sapling': {
       p('soil', k, x + 0.04, y + 0.04, z, 0.92, 0.92, 0.05);
       const g = growth(o, now);
