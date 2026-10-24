@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#4fb3d9">
+<title>Mysön</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;800&display=swap">
+<style>
+/* Layout: full-screen canvas with floating pill HUD; title card floats over a live island. */
+:root {
+  --sea: #4fb3d9;
+  --ink: #2b2646;
+  --ink-glass: rgba(43, 38, 70, 0.78);
+  --cream: #fffaf0;
+  --sun: #ffd23f;
+  --berry: #ff6fa8;
+  --leaf: #5cbf52;
+  --font-display: "Fredoka", "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --font-body: "Nunito", ui-rounded, system-ui, sans-serif;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  color-scheme: light;
+}
+html, body { height: 100%; margin: 0; overflow: hidden; background: var(--sea); color: var(--ink); }
+body {
+  font-family: var(--font-body);
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+  padding-left: max(16px, var(--safe-l));
+  padding-right: max(16px, var(--safe-r));
+}
+[hidden] { display: none !important; }
+canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+button { font: inherit; color: inherit; cursor: pointer; border: 0; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+
+/* ---------- HUD ---------- */
+.hud-top {
+  position: fixed; top: 0; left: 0; right: 0;
+  padding: calc(10px + var(--safe-t)) max(12px, var(--safe-r)) 0 max(12px, var(--safe-l));
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+  pointer-events: none;
+}
+.hud-top > * { pointer-events: auto; }
+.pill {
+  background: var(--ink-glass); color: #fff; border-radius: 999px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 3px 0 rgba(0,0,0,0.18);
+}
+.island-name {
+  font-family: var(--font-display); font-weight: 600; font-size: 18px;
+  padding: 8px 16px; letter-spacing: 0.01em; max-width: 50vw;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hud-buttons { display: flex; gap: 8px; }
+.round {
+  width: 52px; height: 52px; border-radius: 50%; font-size: 24px;
+  display: grid; place-items: center;
+}
+.round:active { transform: scale(0.92); }
+
+.hud-bottom {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  padding: 0 max(12px, var(--safe-r)) calc(12px + var(--safe-b)) max(12px, var(--safe-l));
+  display: flex; justify-content: center; pointer-events: none;
+}
+.hotbar {
+  display: flex; gap: 6px; padding: 6px; pointer-events: auto; border-radius: 22px;
+  max-width: 100%; overflow-x: auto; scrollbar-width: none;
+}
+.hotbar::-webkit-scrollbar { display: none; }
+.slot {
+  position: relative; flex: 0 0 auto; width: 56px; height: 56px; border-radius: 16px;
+  background: rgba(255,255,255,0.14); display: grid; place-items: center;
+}
+.slot .ic { font-size: 30px; line-height: 1; display: grid; place-items: center; }
+.ic svg { width: 1em; height: 1em; display: block; }
+.slot .n {
+  position: absolute; right: 3px; bottom: 1px; font: 700 15px var(--font-display); color: #fff;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.6); font-variant-numeric: tabular-nums;
+}
+.slot[aria-pressed="true"] { background: var(--sun); box-shadow: inset 0 0 0 3px #fff; }
+.slot.bag { background: rgba(255,111,168,0.9); }
+.slot.bump { animation: bump 0.35s ease-out; }
+.bag-sheet {
+  position: fixed; inset: 0; display: grid; place-items: end center; background: rgba(43,38,70,0.35);
+  padding: 16px max(16px, var(--safe-r)) calc(16px + var(--safe-b)) max(16px, var(--safe-l));
+}
+.bag-card {
+  width: min(560px, 100%); max-height: 75vh; overflow-y: auto; background: var(--cream); border-radius: 26px;
+  padding: 16px 18px 18px; box-shadow: 0 8px 0 rgba(43,38,70,0.25);
+}
+.bag-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.bag-head h2 { font: 700 26px var(--font-display); margin: 0; }
+.bag-close { width: 44px; height: 44px; border-radius: 50%; background: #f1ebdc; font-size: 20px; }
+.bag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.bag-item {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px 8px; border-radius: 16px;
+  background: #f1ebdc; font: 600 14px var(--font-display); color: var(--ink);
+}
+.bag-item .ic { font-size: 34px; }
+.bag-item .cnt { font: 700 13px var(--font-body); color: #6d6690; font-variant-numeric: tabular-nums; }
+.bag-item[aria-pressed="true"] { background: var(--sun); }
+.bag-item:disabled { cursor: default; }
+.bubble {
+  background: #fff; color: var(--ink); border-radius: 16px; padding: 4px 8px; font: 700 18px var(--font-display);
+  display: flex; align-items: center; gap: 2px; box-shadow: 0 3px 0 rgba(43,38,70,0.2);
+}
+.bubble::after {
+  content: ""; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; background: #fff;
+  transform: translateX(-50%) rotate(45deg); border-radius: 2px;
+}
+.bubble img { width: 34px; height: 34px; }
+.bubble b { font-size: 15px; }
+.bubble .think { font-size: 20px; }
+.talk-card { display: flex; flex-direction: column; gap: 12px; }
+.talk-head { display: flex; align-items: center; gap: 14px; }
+.talk-head > div:nth-child(2) { flex: 1; min-width: 0; }
+.talk-head h2 { font: 700 28px var(--font-display); margin: 0; }
+.talk-face { font-size: 54px; width: 76px; height: 76px; border-radius: 22px; background: #f1ebdc; display: grid; place-items: center; }
+.talk-hearts { font-size: 16px; letter-spacing: 1px; min-height: 20px; }
+.talk-text { font: 600 21px/1.35 var(--font-display); margin: 0; text-wrap: pretty; }
+.talk-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.talk-actions .big { flex: 1; min-width: 160px; font-size: 22px; padding: 14px; }
+.talk-actions .big:disabled { background: #b9b3c9; box-shadow: none; }
+.thumb { width: 64px; height: 64px; display: block; image-rendering: auto; }
+.slot .thumb { width: 46px; height: 46px; }
+.build-item .nm { text-align: center; line-height: 1.1; }
+.build-item .cost { display: flex; gap: 4px; font: 700 13px var(--font-body); color: var(--ink); font-variant-numeric: tabular-nums; }
+.build-item .cost .short { color: #c0392b; }
+.build-item.poor { opacity: 0.6; }
+.build-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+.chip-btn { font: 600 16px var(--font-display); padding: 10px 14px; border-radius: 999px; background: #e5f4fa; color: var(--ink); }
+.slot.build { background: rgba(92,191,82,0.9); }
+.rot-build { position: fixed; right: max(12px, var(--safe-r)); bottom: calc(196px + var(--safe-b)); width: 52px; height: 52px; font-size: 26px; font-weight: 700; background: var(--sun); color: var(--ink); }
+@keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.3); background: rgba(255,210,63,0.35); } 100% { transform: scale(1); } }
+
+.zoom { position: fixed; right: max(12px, var(--safe-r)); bottom: calc(86px + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; }
+.zoom .round { width: 44px; height: 44px; font-size: 22px; font-family: var(--font-display); font-weight: 700; }
+
+.turn { position: fixed; left: max(12px, var(--safe-l)); bottom: calc(86px + var(--safe-b)); display: flex; flex-direction: column; gap: 8px; }
+.turn .round { width: 44px; height: 44px; font-size: 22px; font-weight: 700; }
+.overlay { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.overlay > div { position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform; }
+.nametag {
+  font: 600 13px var(--font-display); color: #fff; background: var(--ink-glass);
+  padding: 2px 9px; border-radius: 999px;
+}
+.floater {
+  font: 700 22px var(--font-display); color: #fff;
+  text-shadow: 0 2px 0 rgba(43,38,70,0.6), 0 0 6px rgba(43,38,70,0.5);
+}
+.hint {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(84px + var(--safe-b));
+  font-family: var(--font-display); font-weight: 500; font-size: 17px;
+  padding: 10px 18px; text-align: center; max-width: calc(100vw - 120px);
+  pointer-events: none;
+}
+.toast {
+  position: fixed; left: 50%; top: calc(74px + var(--safe-t)); transform: translateX(-50%);
+  font-family: var(--font-display); font-weight: 600; font-size: 18px; padding: 10px 18px;
+  pointer-events: none; transition: opacity 0.3s; white-space: nowrap;
+}
+
+/* ---------- Title ---------- */
+.title {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  padding: calc(16px + var(--safe-t)) max(16px, var(--safe-r)) calc(16px + var(--safe-b)) max(16px, var(--safe-l));
+  background: linear-gradient(180deg, rgba(79,179,217,0.25), rgba(43,38,70,0.35));
+  overflow-y: auto;
+}
+.card {
+  width: min(460px, 100%); background: var(--cream); border-radius: 28px;
+  padding: 22px 22px 20px; box-shadow: 0 8px 0 rgba(43,38,70,0.25), 0 20px 50px rgba(43,38,70,0.25);
+  display: flex; flex-direction: column; gap: 16px;
+}
+.logo {
+  font-family: var(--font-display); font-weight: 700; font-size: clamp(44px, 12vw, 64px);
+  line-height: 0.95; margin: 0; text-align: center; color: var(--ink); letter-spacing: -0.01em;
+}
+.logo span { color: var(--berry); }
+.tag { text-align: center; margin: -8px 0 0; font-weight: 600; color: #5c5578; }
+.label {
+  font-family: var(--font-display); font-weight: 600; font-size: 14px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: #6d6690; margin: 0 0 6px;
+}
+.avatars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.avatar {
+  font-size: 34px; aspect-ratio: 1; border-radius: 18px; background: #f1ebdc;
+  display: grid; place-items: center; max-width: 100%;
+}
+.avatar[aria-pressed="true"] { background: var(--sun); box-shadow: inset 0 0 0 3px var(--ink); }
+.name-input {
+  width: 100%; box-sizing: border-box; font: 600 20px var(--font-display); color: var(--ink);
+  padding: 12px 16px; border-radius: 16px; border: 0; background: #f1ebdc;
+}
+.worlds { display: flex; flex-direction: column; gap: 8px; }
+.world {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 16px;
+  background: #e5f4fa; text-align: left; font-family: var(--font-display); font-weight: 600; font-size: 19px;
+}
+.world-open { flex: 1; display: flex; align-items: center; gap: 10px; background: none; padding: 0; text-align: left; font: inherit; }
+.world .when { margin-left: auto; font-family: var(--font-body); font-size: 13px; font-weight: 600; color: #5c5578; }
+.world .del { background: transparent; font-size: 18px; padding: 4px 6px; border-radius: 10px; }
+.world.confirm { background: #ffe1ec; }
+.big {
+  font-family: var(--font-display); font-weight: 700; font-size: 24px; padding: 16px; border-radius: 20px;
+  background: var(--leaf); color: #fff; box-shadow: 0 5px 0 #3f8f38;
+}
+.big:active { transform: translateY(3px); box-shadow: 0 2px 0 #3f8f38; }
+.shared-wrap { display: flex; flex-direction: column; gap: 10px; border-top: 2px dashed #e3dccb; padding-top: 14px; }
+.world.shared { background: #e8f7e4; }
+.join-row { display: flex; gap: 10px; }
+.join-row .name-input { flex: 1; min-width: 0; text-transform: uppercase; }
+.join-row .big { flex: none; padding-inline: 20px; }
+.big:disabled { opacity: .6; }
+.invite-code {
+  position: fixed; left: 50%; top: calc(126px + var(--safe-t)); transform: translateX(-50%);
+  font-family: var(--font-display); font-weight: 500; font-size: 17px; padding: 8px 16px; white-space: nowrap;
+}
+.invite-code b { letter-spacing: .06em; }
+#inviteBtn[aria-pressed="true"] { background: #4fb3d9; color: #fff; }
+.big.blue { background: #4fb3d9; box-shadow: 0 5px 0 #3a8fb0; }
+.big.blue:active { box-shadow: 0 2px 0 #3a8fb0; }
+.small-note { font-size: 13px; color: #6d6690; text-align: center; margin: 0; }
+
+@media (max-width: 480px) {
+  .hotbar { gap: 4px; padding: 4px; }
+  .slot { width: 48px; height: 48px; border-radius: 14px; }
+  .slot .ic { font-size: 26px; }
+  .hint { font-size: 15px; bottom: calc(70px + var(--safe-b)); }
+  .zoom, .turn { bottom: calc(120px + var(--safe-b)); }
+  .rot-build { bottom: calc(226px + var(--safe-b)); }
+}
+@media (prefers-reduced-motion: reduce) { .slot.bump { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="overlay" class="overlay"></div>
+
+<div class="hud" id="hud" hidden>
+  <div class="hud-top">
+    <div class="pill island-name" id="islandName">Mysön</div>
+    <div class="hud-buttons">
+      <button class="pill round" id="inviteBtn" aria-label="Bjud in en kompis" aria-pressed="false">👋</button>
+      <button class="pill round" id="muteBtn" aria-label="Ljud av/på">🔊</button>
+      <button class="pill round" id="homeBtn" aria-label="Till start">🏠</button>
+    </div>
+  </div>
+  <div class="zoom">
+    <button class="pill round" id="zoomIn" aria-label="Zooma in">+</button>
+    <button class="pill round" id="zoomOut" aria-label="Zooma ut">−</button>
+  </div>
+  <div class="turn">
+    <button class="pill round" id="rotL" aria-label="Vrid åt vänster">↺</button>
+    <button class="pill round" id="rotR" aria-label="Vrid åt höger">↻</button>
+  </div>
+  <div class="pill invite-code" id="inviteCode" hidden></div>
+  <div class="pill hint" id="hint">Tryck på ett träd för att hugga ner det 🪓</div>
+  <div class="pill toast" id="toast" style="opacity:0"></div>
+  <div class="hud-bottom"><div class="pill hotbar" id="hotbar"></div></div>
+  <button class="pill round rot-build" id="rotBuild" aria-label="Vrid saken" hidden>↻</button>
+  <div class="bag-sheet" id="buildSheet" hidden>
+    <div class="bag-card" role="dialog" aria-label="Bygg">
+      <div class="bag-head"><h2>Bygg</h2><button class="bag-close" id="buildClose" aria-label="Stäng">✕</button></div>
+      <div class="build-tools">
+        <button class="chip-btn" id="pickupBtn">♻️ Plocka upp</button>
+        <button class="chip-btn" id="buildStop">✋ Sluta bygga</button>
+      </div>
+      <div id="buildList"></div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="talkSheet" hidden>
+    <div class="bag-card talk-card" role="dialog" aria-labelledby="talkName">
+      <div class="talk-head">
+        <div class="talk-face" id="talkFace" aria-hidden="true">🦄</div>
+        <div><h2 id="talkName">Stjärna</h2><div class="talk-hearts" id="talkHearts"></div></div>
+        <button class="bag-close" id="talkSay" aria-label="Läs igen">🔊</button>
+      </div>
+      <p class="talk-text" id="talkText"></p>
+      <div class="talk-actions">
+        <button class="big" id="talkGive" hidden>Ge</button>
+        <button class="chip-btn" id="talkBye">Hej då 👋</button>
+      </div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="bagSheet" hidden>
+    <div class="bag-card" role="dialog" aria-label="Ryggsäck">
+      <div class="bag-head"><h2>Ryggsäck</h2><button class="bag-close" id="bagClose" aria-label="Stäng">✕</button></div>
+      <p class="label">Verktyg och frön</p>
+      <div class="bag-grid" id="bagUse"></div>
+      <p class="label">Saker</p>
+      <div class="bag-grid" id="bagThings"></div>
+    </div>
+  </div>
+</div>
+
+<div class="title" id="title">
+  <div class="card">
+    <h1 class="logo">Mys<span>ön</span></h1>
+    <p class="tag">Samla, bygg och bo på din egen ö</p>
+    <div>
+      <p class="label">Vem är du?</p>
+      <div class="avatars" id="avatars"></div>
+    </div>
+    <div>
+      <p class="label"><label for="playerName">Ditt namn</label></p>
+      <input class="name-input" id="playerName" maxlength="14" placeholder="Skriv ditt namn" autocomplete="off">
+    </div>
+    <div id="worldsWrap">
+      <p class="label">Dina öar</p>
+      <div class="worlds" id="worlds"></div>
+    </div>
+    <button class="big" id="newWorld">Ny ö 🏝️</button>
+    <p class="small-note">Ön sparas i den här webbläsaren.</p>
+    <div class="shared-wrap">
+      <p class="label"><label for="joinCode">Gå till en kompis ö</label></p>
+      <div class="join-row">
+        <input class="name-input" id="joinCode" maxlength="12" placeholder="Kod, t.ex. SOL-42" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button class="big blue" id="joinBtn">Gå med</button>
+      </div>
+      <p class="small-note" id="joinNote">Kompisen trycker på 👋 på sin ö och läser upp koden.</p>
+    </div>
+    <div id="sharedWrap" class="shared-wrap" hidden>
+      <p class="label">Tillsammans på wifi:t</p>
+      <div class="worlds" id="sharedWorlds"></div>
+      <button class="big blue" id="newShared">Ny gemensam ö 🌍</button>
+      <p class="small-note" id="netNote">Alla som öppnar samma adress kan spela på de här öarna.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
