@@ -1,5 +1,5 @@
 // Boot, game loop, input and HUD.
-import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES, COLLECTION, daylight } from './data.js';
+import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES, COLLECTION, daylight, PETS } from './data.js';
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
 import { connect } from './net.js';
 import * as p2p from './p2p.js';
@@ -484,7 +484,32 @@ function renderBag() {
     }
   }
   $('bagFoodWrap').hidden = !$('bagFood').children.length;
+  renderPets();
   if (!things.children.length) things.innerHTML = '<p class="small-note">Tomt än så länge. Samla trä, sten och blommor!</p>';
+}
+
+// Pick a pet. Tapping the one you have lets you give it a new name.
+function renderPets() {
+  const list = $('bagPets'), mine = world.players[me.id]?.pet;
+  list.innerHTML = '';
+  $('petNote').textContent = mine ? `${mine.name} följer med dig. Tryck på ${mine.name} igen för att byta namn.` : 'Välj ett husdjur som följer med dig!';
+  for (const [kind, def] of Object.entries(PETS)) {
+    const b = document.createElement('button');
+    b.className = 'bag-item';
+    const chosen = mine?.kind === kind;
+    b.innerHTML = '<span class="ic"></span><span></span>';
+    b.children[0].textContent = def.icon;
+    b.children[1].textContent = chosen ? mine.name : def.name;
+    b.setAttribute('aria-pressed', String(chosen));
+    b.onclick = () => {
+      if (chosen) {
+        const name = (prompt('Vad ska ditt husdjur heta?', mine.name) || '').trim();
+        if (name && name !== mine.name) act({ type: 'adopt', kind, name, by: me.id });
+      } else act({ type: 'adopt', kind, by: me.id });
+      closeBag();
+    };
+    list.appendChild(b);
+  }
 }
 
 // ---------------------------------------------------------------- build menu
@@ -593,6 +618,7 @@ function handle(patches) {
     if (p.k === 'obj') { dirty = true; renderer.markDirty(); }
     if (p.k === 'tile') { dirty = true; terrainDirty = true; }
     if (p.k === 'inv') { dirty = true; if (p.pid === me.id) bump(p.item); }
+    if (p.k === 'pet') dirty = true;
     if (p.k !== 'fx') continue;
     const z = heightAt(world, p.x, p.y);
     const mine = p.by === me.id;
@@ -636,6 +662,29 @@ function handle(patches) {
         renderer.floatText(p.x, p.y, z + 0.4, ITEMS[p.item].icon, '+1');
         if (mine) { sfx.gain(); toast(`Du fångade ${ITEMS[p.item].one}! ${ITEMS[p.item].icon}`); }
         break;
+      case 'adopted':
+        if (mine) {
+          const pet = PETS[p.kind];
+          sfx.gain();
+          const name = world.players[me.id].pet.name;
+          toast(p.renamed ? `${pet.icon} Nu heter den ${name}!` : `${pet.icon} ${name} är din nya kompis! Den följer med dig överallt.`);
+          setTimeout(() => petSay(me.id, pet.sound), 600);
+        }
+        break;
+      case 'petfound': {
+        const pp = petPos.get(p.by);
+        if (pp) {
+          renderer.floatText(pp.x - 0.5, pp.y - 0.5, pp.z + 0.2, ITEMS[p.item].svg ? '🌱' : ITEMS[p.item].icon, '+1');
+          pp.hop = Date.now() + 400;
+        }
+        if (mine) {
+          sfx.gain();
+          const pet = world.players[me.id].pet;
+          toast(`${pet.name} hittade ${ITEMS[p.item].one || ITEMS[p.item].name.toLowerCase()}! ${ITEMS[p.item].icon || '🌱'}`);
+          petSay(me.id, PETS[pet.kind].sound);
+        }
+        break;
+      }
       case 'donated':
         renderer.burst(p.x + 0.5, p.y + 0.5, z + 1.5, '#ffd23f', 24);
         if (mine) { sfx.grow(); toast(`Tack! Nu finns ${ITEMS[p.item].one} på museet ⭐`); }
@@ -821,6 +870,7 @@ function tapAt(sx, sy) {
   if (!playing) return;
   const actor = renderer.pickActor(sx, sy);
   if (actor && actor.startsWith('v:')) return goTalk(actor.slice(2));
+  if (actor && actor.startsWith('pet:')) return patPet(actor.slice(4));
   const hit = renderer.pick(sx, sy);
   if (!hit) return;
   let { x, y, obj } = hit;
@@ -883,6 +933,63 @@ function sendPos(t) {
   lastSent = sig;
   if (hosting) hosting.broadcast({ ...msg, id: me.id });
   else link.send(msg);
+}
+
+// ---------------------------------------------------------------- pets
+// Each player's pet trots after them. Where it is only matters on this screen.
+const petPos = new Map(); // player id -> {x, y, z, angle, moving, hop, sayText, sayUntil}
+function petActors(dt, owners) {
+  const out = [];
+  const now = Date.now();
+  for (const o of owners) {
+    const pet = world.players[o.pid]?.pet;
+    if (!pet) { petPos.delete(o.pid); continue; }
+    let p = petPos.get(o.pid);
+    if (!p) { p = { x: o.x - 0.8, y: o.y - 0.8, z: o.z, angle: 0 }; petPos.set(o.pid, p); }
+    const dx = o.x - p.x, dy = o.y - p.y, d = Math.hypot(dx, dy);
+    p.moving = false;
+    if (d > 9) { p.x = o.x - 0.8; p.y = o.y - 0.8; }
+    else if (d > 1.3) {
+      // Faster the further behind it is, so it never gets lost.
+      const step = Math.min(d - 1.1, (SPEED * 1.15 + (d - 1.3) * 1.5) * dt);
+      const nx = p.x + dx / d * step, ny = p.y + dy / d * step;
+      // Hop over water and blocked tiles rather than getting stuck: pets are nimble.
+      p.x = nx; p.y = ny;
+      p.angle = Math.atan2(dx, dy);
+      p.moving = true;
+    }
+    const gz = Math.max(0.85, heightAt(world, Math.floor(p.x), Math.floor(p.y)));
+    p.z = (p.z ?? gz) + (gz - (p.z ?? gz)) * Math.min(1, dt * 12);
+    const bubble = p.sayUntil > now ? `<span class="say">${escapeHtml(p.sayText)}</span>` : '';
+    out.push({ id: 'pet:' + o.pid, kind: pet.kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving: p.moving, name: pet.name, bubble, swing: p.hop, scale: 0.55 });
+  }
+  return out;
+}
+
+function petSay(pid, text) {
+  const p = petPos.get(pid);
+  if (p) { p.sayText = text; p.sayUntil = Date.now() + 2200; p.hop = Date.now() + 400; }
+  speak(text, { pitch: 1.9, rate: 1.2 }, true);
+}
+
+// Patting a pet: it hops, makes its sound and hearts pop up.
+function patPet(pid) {
+  const pet = world.players[pid]?.pet, p = petPos.get(pid);
+  if (!pet || !p) return;
+  p.angle = Math.atan2(me.x - p.x, me.y - p.y);
+  p.lookAt = Date.now() + 2000;
+  renderer.floatText(p.x - 0.5, p.y - 0.5, p.z + 0.1, '💕', '');
+  sfx.pop();
+  petSay(pid, PETS[pet.kind].sound);
+}
+
+// Ask for the pet's present when it is due. The sim checks the time itself.
+let petAsk = 0;
+function petCheck(now) {
+  const pet = world.players[me.id]?.pet;
+  if (!pet || pet.findAt > now || now < petAsk) return;
+  petAsk = now + 5000;
+  act({ type: 'petfind', by: me.id });
 }
 
 function remoteActors(dt) {
@@ -1343,7 +1450,10 @@ function frame(t) {
     villagersMeet(now);
     nightfall(now);
     if (terrainDirty) { terrainDirty = false; renderer.rebuildTerrain(); }
-    renderer.render({ players: [me, ...remoteActors(dt), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
+    petCheck(now);
+    const others = remoteActors(dt);
+    const owners = [{ pid: me.id, x: me.x, y: me.y, z: me.z }, ...[...remotes.values()].map((r) => ({ pid: r.id, x: r.rx, y: r.ry, z: r.z || 1 }))];
+    renderer.render({ players: [me, ...others, ...petActors(dt, owners), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
   } else if (world) {
     renderer.yawTarget += dt * 0.12;
     renderer.render({ focus: { x: world.spawn.x, y: world.spawn.y, z: 1 }, t: t / 1000, dt, now });

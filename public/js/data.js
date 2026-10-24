@@ -90,6 +90,17 @@ export const CROP_MS = 40000;
 // Highest a hill can be built.
 export const MAX_HEIGHT = 4;
 
+// Pets follow you around, say hello when you pat them and now and then find you something.
+export const PETS = {
+  dog: { name: 'Vovve', icon: '🐶', sound: 'Voff voff!' },
+  cat: { name: 'Kissen', icon: '🐱', sound: 'Mjau!' },
+  bunny: { name: 'Hoppe', icon: '🐰', sound: 'Nos nos!' },
+  pig: { name: 'Nöffe', icon: '🐷', sound: 'Nöff nöff!' },
+  frog: { name: 'Kvacke', icon: '🐸', sound: 'Kvack!' },
+  panda: { name: 'Bambu', icon: '🐼', sound: 'Mums mums!' },
+};
+export const PET_FINDS = ['shell', 'shell', 'fruit', 'flower', 'seed_carrot', 'seed_berry', 'seed_fruit', 'star'];
+
 // A whole day on the island takes 20 minutes: 14 of sunshine, a sunset, 4 of night and a
 // sunrise. Everyone shares the same clock, so friends playing together see the same sky.
 // ?time=night or ?time=day holds the clock still.

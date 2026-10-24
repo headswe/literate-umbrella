@@ -466,13 +466,15 @@ export class Renderer3D {
       const hop = p.swing && p.swing > Date.now() ? Math.sin((p.swing - Date.now()) / 200 * Math.PI) * 0.15 : 0;
       c.root.position.set(p.x, p.z + hop, p.y);
       c.root.rotation.y = c.angle;
+      const size = p.scale || 1;
+      if (c.root.scale.x !== size) c.root.scale.setScalar(size);
       c.update(dt, p.moving, t, p.wave > Date.now());
 
       let tag = this.tags.get(p.id);
       if (p.name) {
         if (!tag) { tag = document.createElement('div'); tag.className = 'nametag'; this.overlay.appendChild(tag); this.tags.set(p.id, tag); }
         if (tag.textContent !== p.name) tag.textContent = p.name;
-        this.place(tag, p.x, p.z + 1.25, p.y);
+        this.place(tag, p.x, p.z + 1.25 * size + (size < 1 ? 0.1 : 0), p.y);
       } else if (tag) { tag.remove(); this.tags.delete(p.id); }
 
       // Thought bubble with what a villager wishes for.
@@ -480,7 +482,7 @@ export class Renderer3D {
       if (p.bubble) {
         if (!bub) { bub = document.createElement('div'); bub.className = 'bubble'; this.overlay.appendChild(bub); this.bubbles.set(p.id, bub); }
         if (bub.dataset.html !== p.bubble) { bub.innerHTML = p.bubble; bub.dataset.html = p.bubble; }
-        this.place(bub, p.x, p.z + 1.75 + Math.sin(t * 2.5) * 0.04, p.y);
+        this.place(bub, p.x, p.z + 1.75 * size + (size < 1 ? 0.3 : 0) + Math.sin(t * 2.5) * 0.04, p.y);
       } else if (bub) { bub.remove(); this.bubbles.delete(p.id); }
     }
     for (const [id, c] of this.chars) {

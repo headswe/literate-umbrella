@@ -1,6 +1,6 @@
 // Game rules. The sim owns the world and turns player actions into patches.
 // In single player it runs in the browser; the LAN server will run the same code.
-import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, BUGS, COLLECTION, CROP_MS, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE } from './data.js';
+import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, BUGS, COLLECTION, CROP_MS, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE, PETS, PET_FINDS } from './data.js';
 import { generateWorld, key, mulberry32 } from './worldgen.js';
 
 export function newWorldSave(name, seed) {
@@ -172,6 +172,8 @@ export class Sim {
     if (a.type === 'eat') return this.eat(a, pl);
     if (a.type === 'treat') return this.treat(a, pl, now);
     if (a.type === 'donate') return this.donate(a, pl);
+    if (a.type === 'adopt') return this.adopt(a, pl, now);
+    if (a.type === 'petfind') return this.petFind(a, pl, now);
     if (a.type !== 'use') return [];
     const item = a.item || 'hand';
     if (item !== 'hand' && !(pl.inv[item] > 0)) return [];
@@ -423,6 +425,28 @@ export class Sim {
     return out;
   }
 
+  // Choose a pet (or swap for another kind). It follows its owner everywhere.
+  adopt(a, pl, now) {
+    const out = [];
+    if (!PETS[a.kind]) return out;
+    const name = String(a.name || PETS[a.kind].name).slice(0, 16);
+    const renamed = pl.pet?.kind === a.kind;
+    put(out, this.world, { k: 'pet', pid: a.by, v: { kind: a.kind, name, findAt: renamed ? pl.pet.findAt : now + 60000 } });
+    put(out, this.world, { k: 'fx', fx: 'adopted', by: a.by, kind: a.kind, renamed });
+    return out;
+  }
+
+  // Every couple of minutes the pet sniffs out a little present.
+  petFind(a, pl, now) {
+    const out = [];
+    if (!pl.pet || pl.pet.findAt > now) return out;
+    const item = PET_FINDS[Math.floor(this.rand() * PET_FINDS.length)];
+    this.give(out, a.by, item, 1);
+    put(out, this.world, { k: 'pet', pid: a.by, v: { ...pl.pet, findAt: now + 120000 + this.rand() * 60000 } });
+    put(out, this.world, { k: 'fx', fx: 'petfound', by: a.by, item });
+    return out;
+  }
+
   // Give a friend some food just because. They love it.
   treat(a, pl, now) {
     const out = [];
@@ -583,6 +607,9 @@ export function applyPatch(w, p) {
     w.terrain[y * w.size + x] = p.t;
     w.height[y * w.size + x] = p.h;
     (w.tiles || (w.tiles = {}))[p.key] = [p.t, p.h];
+  } else if (p.k === 'pet') {
+    const pl = w.players[p.pid] || (w.players[p.pid] = { inv: {} });
+    pl.pet = p.v;
   } else if (p.k === 'museum') {
     (w.museum || (w.museum = {}))[p.item] = p.who || '🙂';
   } else if (p.k === 'vil') {
