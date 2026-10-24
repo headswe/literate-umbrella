@@ -353,6 +353,7 @@ function startGame(save, onServer = false) {
   $('talkSheet').hidden = true;
   $('cookSheet').hidden = true;
   $('museumSheet').hidden = true;
+  $('mailSheet').hidden = true;
   me.boost = 0;
   ensureThumbs();
   vilPos.clear();
@@ -685,6 +686,19 @@ function handle(patches) {
         }
         break;
       }
+      case 'mail':
+        if (mine) {
+          sfx.gain();
+          toast(`${VIL[p.from]?.name || 'En kompis'} har skickat ett brev till dig! ✉️ Titta i brevlådan.`);
+          if (!$('mailSheet').hidden) renderMail();
+        }
+        break;
+      case 'mailopened':
+        if (mine) {
+          if (p.item) { sfx.gain(); renderer.floatText(me.x - 0.5, me.y - 0.5, me.z + 0.5, ITEMS[p.item].svg ? '🌱' : ITEMS[p.item].icon, '+1'); }
+          if (!$('mailSheet').hidden) renderMail();
+        }
+        break;
       case 'donated':
         renderer.burst(p.x + 0.5, p.y + 0.5, z + 1.5, '#ffd23f', 24);
         if (mine) { sfx.grow(); toast(`Tack! Nu finns ${ITEMS[p.item].one} på museet ⭐`); }
@@ -833,6 +847,7 @@ function goTalk(vid) {
 
 function doAct(tx, ty, what) {
   if (what.type === 'cookmenu') { face(tx + 0.5 - me.x, ty + 0.5 - me.y); openCook(tx, ty); return; }
+  if (what.type === 'mailmenu') { face(tx + 0.5 - me.x, ty + 0.5 - me.y); openMail(); return; }
   if (what.type === 'museummenu') { face(tx + 1 - me.x, ty + 1 - me.y); openMuseum(tx, ty); return; }
   if (what.type === 'talk') {
     const v = world.villagers[what.vid];
@@ -902,6 +917,7 @@ function tapAt(sx, sy) {
   }
   if (obj && obj.type === 'build' && obj.id === 'campfire' && !sel.startsWith('build:') && sel !== 'pickup') return goAct(x, y, { type: 'cookmenu' });
   if (obj && obj.type === 'build' && obj.id === 'museum' && !sel.startsWith('build:') && sel !== 'pickup') return goMuseum(x, y);
+  if (obj && obj.type === 'build' && obj.id === 'mailbox' && !sel.startsWith('build:') && sel !== 'pickup') return goAct(x, y, { type: 'mailmenu' });
 
   // Seeds go in soil, the hoe works on grass.
   if (kind === 'seed' && obj && obj.type === 'soil') return goUse(x, y, sel);
@@ -1259,6 +1275,53 @@ function closeMuseum() { $('museumSheet').hidden = true; museumAt = null; }
 $('museumClose').onclick = closeMuseum;
 $('museumSheet').addEventListener('pointerdown', (e) => { if (e.target === $('museumSheet')) closeMuseum(); });
 
+// ---------------------------------------------------------------- letters
+const myMail = () => world.players[me.id]?.mail || [];
+let reading = null;
+function openMail() {
+  reading = null;
+  renderMail();
+  $('mailSheet').hidden = false;
+  sfx.pop();
+}
+function renderMail() {
+  const list = $('mailList'), letter = myMail().find((m) => m.id === reading);
+  list.innerHTML = '';
+  $('mailLetter').hidden = !letter;
+  list.hidden = !!letter;
+  $('mailNote').hidden = !!letter;
+  if (letter) {
+    const info = VIL[letter.from];
+    $('mailFrom').textContent = `Från ${info?.name || 'en kompis'}`;
+    $('mailText').textContent = letter.text;
+    $('mailGift').textContent = letter.gift ? `Presenten: ${ITEMS[letter.gift].icon || '🌱'} ${ITEMS[letter.gift].name}` : '';
+    return;
+  }
+  const mail = myMail();
+  $('mailNote').textContent = mail.length ? 'Tryck på ett brev för att läsa det.' : 'Inga brev än. Dina kompisar skriver snart! 💌';
+  for (const m of mail) {
+    const b = document.createElement('button');
+    b.className = 'bag-item mail-item' + (m.read ? '' : ' unread');
+    b.innerHTML = '<span class="ic"></span><span></span><span class="cnt"></span>';
+    b.children[0].textContent = m.read ? '📭' : '💌';
+    b.children[1].textContent = VIL[m.from]?.name || 'Kompis';
+    b.children[2].textContent = m.read ? 'Läst' : 'Nytt!';
+    b.onclick = () => readLetter(m);
+    list.appendChild(b);
+  }
+}
+function readLetter(m) {
+  reading = m.id;
+  if (!m.read) act({ type: 'openmail', id: m.id, by: me.id });
+  renderMail();
+  speak(m.text, VIL[m.from]?.voice);
+}
+function closeMail() { $('mailSheet').hidden = true; reading = null; stopSpeaking(); }
+$('mailClose').onclick = closeMail;
+$('mailBack').onclick = () => { reading = null; stopSpeaking(); renderMail(); };
+$('mailRead').onclick = () => { const m = myMail().find((l) => l.id === reading); if (m) speak(m.text, VIL[m.from]?.voice); };
+$('mailSheet').addEventListener('pointerdown', (e) => { if (e.target === $('mailSheet')) closeMail(); });
+
 // The tastiest food you carry, for treating a friend.
 function bestFood() {
   return ['pie', 'soup', 'muffin', 'carrotsoup', 'grilled', 'fruit', 'carrot', 'berry'].find((id) => inv()[id] > 0) || null;
@@ -1453,7 +1516,7 @@ function frame(t) {
     petCheck(now);
     const others = remoteActors(dt);
     const owners = [{ pid: me.id, x: me.x, y: me.y, z: me.z }, ...[...remotes.values()].map((r) => ({ pid: r.id, x: r.rx, y: r.ry, z: r.z || 1 }))];
-    renderer.render({ players: [me, ...others, ...petActors(dt, owners), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
+    renderer.render({ players: [me, ...others, ...petActors(dt, owners), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now, mail: myMail().some((m) => !m.read) });
   } else if (world) {
     renderer.yawTarget += dt * 0.12;
     renderer.render({ focus: { x: world.spawn.x, y: world.spawn.y, z: 1 }, t: t / 1000, dt, now });
@@ -1509,6 +1572,7 @@ window.addEventListener('popstate', () => {
   else if (!$('buildSheet').hidden) closeBuild();
   else if (!$('cookSheet').hidden) closeCook();
   else if (!$('museumSheet').hidden) closeMuseum();
+  else if (!$('mailSheet').hidden) closeMail();
   else toast('Tryck på 🏠 för att gå hem');
 });
 

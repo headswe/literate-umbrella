@@ -1,6 +1,6 @@
 // Game rules. The sim owns the world and turns player actions into patches.
 // In single player it runs in the browser; the LAN server will run the same code.
-import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, BUGS, COLLECTION, CROP_MS, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE, PETS, PET_FINDS } from './data.js';
+import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, BUGS, COLLECTION, CROP_MS, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE, PETS, PET_FINDS, LETTERS, LETTER_GIFTS, MAIL_MS } from './data.js';
 import { generateWorld, key, mulberry32 } from './worldgen.js';
 
 export function newWorldSave(name, seed) {
@@ -165,7 +165,11 @@ export class Sim {
     const w = this.world;
     const pl = w.players[a.by];
     if (!pl) return [];
-    if (a.type === 'build') return this.build(a, pl, now);
+    if (a.type === 'build') {
+      // A new mailbox gets its first letter soon.
+      if (a.id === 'mailbox') this.nextMail = Math.min(this.nextMail ?? Infinity, now + 20000);
+      return this.build(a, pl, now);
+    }
     if (a.type === 'pickup') return this.pickup(a);
     if (a.type === 'give') return this.giveWish(a, pl, now);
     if (a.type === 'cook') return this.cook(a, pl);
@@ -174,6 +178,7 @@ export class Sim {
     if (a.type === 'donate') return this.donate(a, pl);
     if (a.type === 'adopt') return this.adopt(a, pl, now);
     if (a.type === 'petfind') return this.petFind(a, pl, now);
+    if (a.type === 'openmail') return this.openMail(a, pl);
     if (a.type !== 'use') return [];
     const item = a.item || 'hand';
     if (item !== 'hand' && !(pl.inv[item] > 0)) return [];
@@ -436,6 +441,37 @@ export class Sim {
     return out;
   }
 
+  // Reading a letter takes out the present that came with it.
+  openMail(a, pl) {
+    const out = [];
+    const letter = (pl.mail || []).find((m) => m.id === a.id);
+    if (!letter || letter.read) return out;
+    if (letter.gift) this.give(out, a.by, letter.gift, 1);
+    put(out, this.world, { k: 'mail', pid: a.by, mail: pl.mail.map((m) => (m.id === a.id ? { ...m, read: true } : m)) });
+    put(out, this.world, { k: 'fx', fx: 'mailopened', by: a.by, item: letter.gift, from: letter.from });
+    return out;
+  }
+
+  // Friends write to everyone with a name, as long as the island has a mailbox.
+  deliverMail(out, now) {
+    const w = this.world;
+    const friends = Object.values(w.villagers || {});
+    if (!friends.length || !Object.values(w.objects).some((o) => o.type === 'build' && o.id === 'mailbox')) return;
+    for (const [pid, pl] of Object.entries(w.players)) {
+      if (!pl.name) continue;
+      const mail = pl.mail || [];
+      if (mail.filter((m) => !m.read).length >= 3) continue;
+      const vil = friends[Math.floor(this.rand() * friends.length)];
+      const from = VILLAGERS.find((v) => v.id === vil.id)?.name || 'en kompis';
+      const text = LETTERS[Math.floor(this.rand() * LETTERS.length)].replace('{namn}', pl.name).replace('{från}', from);
+      const gift = LETTER_GIFTS[Math.floor(this.rand() * LETTER_GIFTS.length)];
+      const letter = { id: now.toString(36) + Math.floor(this.rand() * 1e6).toString(36), from: vil.id, text, gift, t: now };
+      // Keep the newest twelve letters.
+      put(out, w, { k: 'mail', pid, mail: [letter, ...mail].slice(0, 12) });
+      put(out, w, { k: 'fx', fx: 'mail', by: pid, from: vil.id });
+    }
+  }
+
   // Every couple of minutes the pet sniffs out a little present.
   petFind(a, pl, now) {
     const out = [];
@@ -535,6 +571,10 @@ export class Sim {
       this.nextVil = now + 250;
       this.tickVillagers(now, out);
     }
+    if (now >= (this.nextMail ?? (this.nextMail = now + 90000))) {
+      this.nextMail = now + MAIL_MS;
+      this.deliverMail(out, now);
+    }
     if (now >= this.nextGrow) {
       this.nextGrow = now + 1000;
       for (const k in w.objects) {
@@ -607,6 +647,9 @@ export function applyPatch(w, p) {
     w.terrain[y * w.size + x] = p.t;
     w.height[y * w.size + x] = p.h;
     (w.tiles || (w.tiles = {}))[p.key] = [p.t, p.h];
+  } else if (p.k === 'mail') {
+    const pl = w.players[p.pid] || (w.players[p.pid] = { inv: {} });
+    pl.mail = p.mail;
   } else if (p.k === 'pet') {
     const pl = w.players[p.pid] || (w.players[p.pid] = { inv: {} });
     pl.pet = p.v;

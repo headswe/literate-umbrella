@@ -101,6 +101,19 @@ export const PETS = {
 };
 export const PET_FINDS = ['shell', 'shell', 'fruit', 'flower', 'seed_carrot', 'seed_berry', 'seed_fruit', 'star'];
 
+// Letters friends send to the mailbox. {namn} is you, {från} is the friend.
+export const LETTERS = [
+  'Hej {namn}! Jag tänkte på dig idag. Här är en liten present till dig. Kram, {från}',
+  'Kära {namn}! Tack för att du är så snäll. Du är min bästa kompis på ön! Hälsningar {från}',
+  'Hej {namn}! Har du sett hur fin ön har blivit? Det är tack vare dig! /{från}',
+  'Hallå {namn}! Jag hittade den här och tänkte att du skulle gilla den. Från {från}',
+  'Hej {namn}! Vill du leka med mig snart? Jag väntar vid mitt hus. Kram från {från}',
+  'Kära {namn}! Igår drömde jag att vi flög på ett moln. Det var så roligt! /{från}',
+  'Hej {namn}! Glöm inte att vattna blommorna. Här är en present! Din kompis {från}',
+];
+export const LETTER_GIFTS = ['flower', 'fruit', 'shell', 'star', 'seed_carrot', 'seed_berry', 'seed_fruit', 'pie', 'muffin'];
+export const MAIL_MS = 4 * 60000; // a new letter now and then while there is a mailbox
+
 // A whole day on the island takes 20 minutes: 14 of sunshine, a sunset, 4 of night and a
 // sunrise. Everyone shares the same clock, so friends playing together see the same sky.
 // ?time=night or ?time=day holds the clock still.

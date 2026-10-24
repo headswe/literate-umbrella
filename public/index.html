@@ -134,6 +134,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 .bubble b { font-size: 15px; }
 .bubble .think { font-size: 20px; }
 .bubble .say { font: 600 15px/1.25 var(--font-display); white-space: normal; width: max-content; max-width: 200px; padding: 2px 2px; text-align: center; }
+.mail-item.unread { background: var(--sun); }
+.letter { background: #fffdf6; border: 2px dashed #e3d7bc; border-radius: 18px; padding: 14px 16px; margin-top: 6px; }
+.letter-from { font: 700 15px var(--font-body); color: #6d6690; margin: 0 0 6px; }
+.letter-text { font: 600 21px/1.4 var(--font-display); margin: 0 0 10px; }
+.letter-gift { font: 700 16px var(--font-body); margin: 0 0 12px; }
+.letter-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .talk-card { display: flex; flex-direction: column; gap: 12px; }
 .talk-head { display: flex; align-items: center; gap: 14px; }
 .talk-head > div:nth-child(2) { flex: 1; min-width: 0; }
@@ -342,6 +348,22 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
       <div class="bag-head"><h2>Museum 🏛️</h2><button class="bag-close" id="museumClose" aria-label="Stäng">✕</button></div>
       <p class="small-note" id="museumNote">Ge museet en av varje fisk och småkryp. Du får en ⭐ för varje ny!</p>
       <div class="bag-grid" id="museumList"></div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="mailSheet" hidden>
+    <div class="bag-card" role="dialog" aria-label="Brevlåda">
+      <div class="bag-head"><h2>Brevlåda 📮</h2><button class="bag-close" id="mailClose" aria-label="Stäng">✕</button></div>
+      <p class="small-note" id="mailNote"></p>
+      <div class="bag-grid" id="mailList"></div>
+      <div class="letter" id="mailLetter" hidden>
+        <p class="letter-from" id="mailFrom"></p>
+        <p class="letter-text" id="mailText"></p>
+        <p class="letter-gift" id="mailGift"></p>
+        <div class="letter-buttons">
+          <button class="chip-btn" id="mailRead">🔊 Läs igen</button>
+          <button class="chip-btn" id="mailBack">✉️ Alla brev</button>
+        </div>
+      </div>
     </div>
   </div>
   <div class="bag-sheet" id="cookSheet" hidden>

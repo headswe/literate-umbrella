@@ -108,6 +108,9 @@ export class Renderer3D {
     this.chars.clear();
     for (const b of this.bugs.values()) this.scene.remove(b.root);
     this.bugs.clear();
+    for (const f of this.mailFlags || []) f.remove();
+    this.mailFlags = [];
+    this.mailboxes = [];
     for (const t of this.tags.values()) t.remove();
     this.tags.clear();
     for (const b of this.bubbles.values()) b.remove();
@@ -243,7 +246,7 @@ export class Renderer3D {
     const w = this.world, ps = this.ps;
     ps.begin();
     let busy = false, animated = false;
-    const spots = [];
+    const spots = [], mailboxes = [];
     for (const k in w.objects) {
       const o = refresh(w.objects[k], now);
       const [x, y] = k.split(',').map(Number);
@@ -256,6 +259,7 @@ export class Renderer3D {
         drawBuild(ps, k, o, x, y, z, now, nb);
         if (o.id === 'lamp') spots.push({ x: x + 0.5, y: y + 0.5, z: z + 1.2, power: 1 });
         else if (o.id === 'campfire') spots.push({ x: x + 0.5, y: y + 0.5, z: z + 0.5, power: 1.3, fire: true });
+        else if (o.id === 'mailbox') mailboxes.push({ x: x + 0.5, y: y + 0.5, z: z + 1.25 });
         else if (o.id === 'house' && o.owner) spots.push({ x: x + 1, y: y + 1, z: z + 1, power: 0.8 });
         if (BUILDS[o.id]?.animated) animated = true;
       } else {
@@ -274,6 +278,7 @@ export class Renderer3D {
     });
     ps.end();
     this.lampSpots = spots;
+    this.mailboxes = mailboxes;
     this.natureDirty = busy;
     this.growing = animated;
   }
@@ -546,7 +551,22 @@ export class Renderer3D {
     for (const [k, b] of this.bugs) if (!seen.has(k)) { this.scene.remove(b.root); this.bugs.delete(k); }
   }
 
-  render({ players = [], marker = null, focus, t, dt, now }) {
+  // An envelope bobs over every mailbox while there is a letter you have not read.
+  syncMailFlags(on, t) {
+    const list = on ? this.mailboxes || [] : [];
+    this.mailFlags = this.mailFlags || [];
+    while (this.mailFlags.length > list.length) this.mailFlags.pop().remove();
+    while (this.mailFlags.length < list.length) {
+      const el = document.createElement('div');
+      el.className = 'bubble';
+      el.innerHTML = '<span class="think">✉️</span>';
+      this.overlay.appendChild(el);
+      this.mailFlags.push(el);
+    }
+    list.forEach((m, i) => this.place(this.mailFlags[i], m.x, m.z + 0.35 + Math.sin(t * 3 + i) * 0.06, m.y));
+  }
+
+  render({ players = [], marker = null, focus, t, dt, now, mail = false }) {
     if (!this.world) return;
     this.adapt(dt);
     this.syncBugs(t);
@@ -574,6 +594,7 @@ export class Renderer3D {
     this.water.position.y = WATER_Y + Math.sin(t * 0.9) * 0.025;
 
     this.syncPlayers(players, t, dt);
+    this.syncMailFlags(mail, t);
 
     if (marker) {
       this.marker.visible = true;
