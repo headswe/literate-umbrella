@@ -20,7 +20,8 @@ const head = html.match(/<head>([\s\S]*)<\/head>/)[1]
   .replace(/<meta name="viewport"[^>]*>\s*/, '')
   .replace('./vendor/three.module.min.js', `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/build/three.module.min.js`);
 const body = html.match(/<body>([\s\S]*)<\/body>/)[1]
-  .replace(/<script type="module"[^>]*><\/script>/, `<script type="module">${js}</script>`);
+  // A function, so "$&" in the minified code is not read as a replacement pattern.
+  .replace(/<script type="module"[^>]*><\/script>/, () => `<script type="module">${js}</script>`);
 
 await mkdir('dist', { recursive: true });
 await writeFile('dist/myson.html', head.trim() + '\n' + body.trim() + '\n');
