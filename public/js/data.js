@@ -90,6 +90,22 @@ export const CROP_MS = 40000;
 // Highest a hill can be built.
 export const MAX_HEIGHT = 4;
 
+// A whole day on the island takes 20 minutes: 14 of sunshine, a sunset, 4 of night and a
+// sunrise. Everyone shares the same clock, so friends playing together see the same sky.
+// ?time=night or ?time=day holds the clock still.
+export const DAY_MS = 20 * 60000;
+const fixedTime = typeof location !== 'undefined' && new URLSearchParams(location.search).get('time');
+export function daylight(now) {
+  if (fixedTime === 'night') return 0;
+  if (fixedTime === 'day') return 1;
+  const f = (now % DAY_MS) / DAY_MS;
+  const ease = (t) => t * t * (3 - 2 * t);
+  if (f < 0.7) return 1;
+  if (f < 0.75) return 1 - ease((f - 0.7) / 0.05);
+  if (f < 0.95) return 0;
+  return ease((f - 0.95) / 0.05);
+}
+
 // Things on the island. `tool` is what you tap them with, `hp` how many hits before they are gone.
 export const NATURE = {
   tree: { tool: 'axe', gives: 'wood', hp: 3, seed: 'seed_tree', blocks: true },

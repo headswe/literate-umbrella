@@ -1,5 +1,5 @@
 // Boot, game loop, input and HUD.
-import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES, COLLECTION } from './data.js';
+import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES, COLLECTION, daylight } from './data.js';
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
 import { connect } from './net.js';
 import * as p2p from './p2p.js';
@@ -955,6 +955,8 @@ const GREET = {
   cat: ['Mjau! Hej {namn}!', 'Hej {namn}. Jag tog just en tupplur.'],
 };
 const CHAT = ['Vilket fint väder idag!', 'Jag tycker om vår ö.', 'Tryck på mig om du vill prata!', 'Har du sett blommorna?', 'Du är en bra kompis!'];
+const NIGHT_HELLO = ['God kväll {namn}!', 'Hej {namn}! Ser du stjärnorna?', 'Hej {namn}! Jag är lite sömnig...', 'Gääsp! Hej {namn}.'];
+const NIGHT_CHAT = ['Titta så många stjärnor!', 'Lyktorna är så mysiga.', 'Snart är det morgon igen.', 'Sov gott sen!'];
 const BYE = ['Hej då!', 'Vi ses!', 'Hej då, kom snart tillbaka!', 'Ha det så bra!'];
 const greetAt = new Map();  // villager id -> when they may greet again
 let nextChat = 0;           // nobody starts chatting before this
@@ -1021,14 +1023,25 @@ function villagersMeet(now) {
   }
 }
 
+// Tell the kids when evening comes and when the sun is back.
+let wasNight = null;
+function nightfall(now) {
+  const l = daylight(now);
+  const night = wasNight ? l < 0.6 : l < 0.4;
+  if (night === wasNight) return;
+  if (wasNight !== null) toast(night ? 'Nu blir det kväll 🌙 Lyktor och eldar lyser upp ön.' : 'God morgon! Solen är uppe ☀️');
+  wasNight = night;
+}
+
 // Friends say hello when you walk past, now and then, but never all at once.
 function greetNearby(now) {
   if (now < nextChat || talking || isSpeaking()) return;
   for (const v of Object.values(world.villagers || {})) {
     const p = vilPos.get(v.id);
     if (!p || Math.hypot(p.x - me.x, p.y - me.y) > 2.6 || (greetAt.get(v.id) || 0) > now) continue;
-    const hello = pick(GREET[VIL[v.id].kind] || HELLO).replace('{namn}', me.name || 'kompis');
-    say(v.id, Math.random() < 0.35 ? `${hello} ${pick(CHAT)}` : hello, true);
+    const night = daylight(now) < 0.3;
+    const hello = pick(night ? NIGHT_HELLO : GREET[VIL[v.id].kind] || HELLO).replace('{namn}', me.name || 'kompis');
+    say(v.id, Math.random() < 0.35 ? `${hello} ${pick(night ? NIGHT_CHAT : CHAT)}` : hello, true);
     p.angle = Math.atan2(me.x - p.x, me.y - p.y);
     p.wave = now + 1600;
     p.swing = now + 300;
@@ -1328,6 +1341,7 @@ function frame(t) {
     if (dirty && t - lastSave > 4000) { save(); lastSave = t; }
     greetNearby(now);
     villagersMeet(now);
+    nightfall(now);
     if (terrainDirty) { terrainDirty = false; renderer.rebuildTerrain(); }
     renderer.render({ players: [me, ...remoteActors(dt), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
   } else if (world) {

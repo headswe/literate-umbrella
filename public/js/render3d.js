@@ -1,6 +1,6 @@
 // WebGL renderer: real 3D blocks, light and shadows, seen from an isometric-style camera.
 import * as THREE from 'three';
-import { T } from './data.js';
+import { T, daylight } from './data.js';
 import { key } from './worldgen.js';
 import { refresh } from './sim.js';
 import { BUILDS } from './data.js';
@@ -10,6 +10,8 @@ import { makeCharacter, makeBug } from './characters.js';
 
 const WATER_Y = 0.82;
 const SKY = '#a9e0f5';
+const NIGHT_SKY = '#1b2350';
+const LAMPS = 6; // the nearest lamps, fires and lit windows that shine at night
 
 export class Renderer3D {
   constructor(canvas, overlay) {
@@ -36,7 +38,8 @@ export class Renderer3D {
     this.dist = 16;
     this.target = new THREE.Vector3();
 
-    this.scene.add(new THREE.HemisphereLight('#e4f6ff', '#6f9a52', 1.6));
+    this.hemi = new THREE.HemisphereLight('#e4f6ff', '#6f9a52', 1.6);
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight('#fff1d6', 2.1);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1536, 1536);
@@ -46,6 +49,16 @@ export class Renderer3D {
     sun.shadow.normalBias = 0.03;
     this.scene.add(sun, sun.target);
     this.sun = sun;
+    // Lamp lights always exist (dark by day) so shaders never have to be rebuilt.
+    this.lamps = [];
+    for (let i = 0; i < LAMPS; i++) {
+      const l = new THREE.PointLight('#ffc36b', 0, 6, 1.5);
+      this.scene.add(l);
+      this.lamps.push(l);
+    }
+    this.lampSpots = [];
+    this.light = -1;
+    this.makeStars();
 
     this.tex = makeTextures();
     this.raycaster = new THREE.Raycaster();
@@ -230,6 +243,7 @@ export class Renderer3D {
     const w = this.world, ps = this.ps;
     ps.begin();
     let busy = false, animated = false;
+    const spots = [];
     for (const k in w.objects) {
       const o = refresh(w.objects[k], now);
       const [x, y] = k.split(',').map(Number);
@@ -240,6 +254,9 @@ export class Renderer3D {
       if (o.type === 'build') {
         const nb = (ax, ay) => w.objects[key(x + ax, y + ay)]?.id === o.id;
         drawBuild(ps, k, o, x, y, z, now, nb);
+        if (o.id === 'lamp') spots.push({ x: x + 0.5, y: y + 0.5, z: z + 1.2, power: 1 });
+        else if (o.id === 'campfire') spots.push({ x: x + 0.5, y: y + 0.5, z: z + 0.5, power: 1.3, fire: true });
+        else if (o.id === 'house' && o.owner) spots.push({ x: x + 1, y: y + 1, z: z + 1, power: 0.8 });
         if (BUILDS[o.id]?.animated) animated = true;
       } else {
         drawNature(ps, k, o, x, y, z, now, dx);
@@ -256,6 +273,7 @@ export class Renderer3D {
       return true;
     });
     ps.end();
+    this.lampSpots = spots;
     this.natureDirty = busy;
     this.growing = animated;
   }
@@ -296,6 +314,56 @@ export class Renderer3D {
   markDirty() { this.natureDirty = true; }
 
   shake(x, y, now) { this.shakes.set(key(x, y), now + 260); this.natureDirty = true; }
+
+  // ---------------------------------------------------------------- day and night
+  makeStars() {
+    const n = 260, pos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      // Points on the upper half of a big ball around the camera.
+      const a = Math.random() * Math.PI * 2, u = 0.15 + Math.random() * 0.85;
+      const r = Math.sqrt(1 - u * u);
+      pos.set([Math.cos(a) * r * 90, u * 90, Math.sin(a) * r * 90], i * 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    this.stars = new THREE.Points(g, new THREE.PointsMaterial({ color: '#ffffff', size: 2, sizeAttenuation: false, fog: false, transparent: true, opacity: 0 }));
+    this.stars.frustumCulled = false;
+    this.stars.visible = false;
+    this.scene.add(this.stars);
+  }
+
+  // l is 1 at noon and 0 at night.
+  setDaylight(l, t) {
+    this.night = 1 - l;
+    if (l !== this.light) {
+      this.light = l;
+      const sky = this.color.set(NIGHT_SKY).lerp(new THREE.Color(SKY), l);
+      // A warm orange touch at sunset and sunrise.
+      sky.lerp(new THREE.Color('#ff9a6b'), Math.sin(l * Math.PI) * 0.35);
+      this.scene.background.copy(sky);
+      this.scene.fog.color.copy(sky);
+      this.hemi.intensity = 0.32 + l * 1.28;
+      this.hemi.color.set('#8fa3ff').lerp(new THREE.Color('#e4f6ff'), l);
+      this.sun.intensity = 0.22 + l * 1.88;
+      this.sun.color.set('#9fb4ff').lerp(new THREE.Color('#fff1d6'), l);
+      this.stars.visible = l < 0.95;
+      this.stars.material.opacity = 1 - l;
+    }
+    this.stars.position.copy(this.camera.position);
+    // Light the lamps closest to the camera.
+    const dark = Math.min(1, (1 - l) * 1.5);
+    const near = dark > 0 ? this.lampSpots
+      .map((s) => ({ s, d: (s.x - this.target.x) ** 2 + (s.y - this.target.z) ** 2 }))
+      .filter((o) => o.d < 400).sort((a, b) => a.d - b.d).slice(0, LAMPS) : [];
+    this.lamps.forEach((lamp, i) => {
+      const s = near[i]?.s;
+      if (!s) { lamp.intensity = 0; return; }
+      lamp.position.set(s.x, s.z, s.y);
+      const flicker = s.fire ? 0.85 + Math.sin(t * 9 + i) * 0.1 + Math.sin(t * 23) * 0.05 : 1;
+      lamp.color.set(s.fire ? '#ff9a4a' : '#ffc36b');
+      lamp.intensity = dark * s.power * flicker * 7;
+    });
+  }
 
   // ---------------------------------------------------------------- effects
   makeParticles() {
@@ -496,6 +564,7 @@ export class Renderer3D {
 
     this.sun.position.set(this.target.x - 10, this.target.y + 22, this.target.z + 6);
     this.sun.target.position.copy(this.target);
+    this.setDaylight(daylight(now), t);
 
     if (this.natureDirty || now - this.lastNature > (this.growing ? 200 : 1000)) { this.rebuildNature(now); this.lastNature = now; }
 
