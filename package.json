@@ -1,0 +1,14 @@
+{
+  "name": "myson",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mysön – ett mysigt kubspel för barn att spela i webbläsaren",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "build:artifact": "node scripts/build-artifact.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2"
+  }
+}
