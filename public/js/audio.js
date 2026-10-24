@@ -34,5 +34,10 @@ export const sfx = {
   pop: () => { tone(520, 0.08, 'sine', 0.12, 300); },
   gain: () => { tone(660, 0.07, 'sine', 0.1); tone(990, 0.1, 'sine', 0.08, 0, 0.06); },
   nope: () => { tone(220, 0.12, 'sine', 0.08, -80); },
+  fell: () => { tone(160, 0.25, 'triangle', 0.14, -100); tone(90, 0.35, 'sine', 0.16, -40, 0.12); tone(523, 0.12, 'sine', 0.06, 0, 0.3); },
+  crumble: () => { for (let i = 0; i < 4; i++) tone(500 + Math.random() * 400, 0.06, 'triangle', 0.07, -200, i * 0.04); },
+  dig: () => { tone(140, 0.09, 'triangle', 0.1, -50); tone(200, 0.07, 'sine', 0.06, -60, 0.05); },
+  plant: () => { tone(440, 0.08, 'sine', 0.08); tone(660, 0.12, 'sine', 0.08, 120, 0.07); },
+  grow: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.12, 'sine', 0.07, 0, i * 0.07)); },
   step: () => { tone(90 + Math.random() * 30, 0.04, 'triangle', 0.03); },
 };

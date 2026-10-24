@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { T } from './data.js';
 import { key } from './worldgen.js';
-import { refresh } from './sim.js';
+import { refresh, growth } from './sim.js';
 import { makeTextures } from './textures.js';
 import { makeCharacter } from './characters.js';
 
@@ -56,6 +56,7 @@ export class Renderer3D {
     this.floaters = [];
     this.particles = [];
     this.shakes = new Map();
+    this.fallers = [];
     this.world = null;
     this.layers = [];
     this.natureDirty = true;
@@ -192,6 +193,7 @@ export class Renderer3D {
       pine: this.instanced(L({ map: tx.pine }), cap),
       rock: this.instanced(L({ map: tx.stone }), cap),
       solid: this.instanced(L({ color: '#ffffff' }), cap), // apples, flowers, shells (coloured per instance)
+      soil: this.instanced(L({ map: tx.soil }), cap, { cast: false }),
     };
     for (const m of Object.values(this.parts)) m.userData.keys = [];
   }
@@ -201,51 +203,74 @@ export class Renderer3D {
     this.tmp.position.set(x + sx / 2, z + sz / 2, y + sy / 2);
     this.tmp.scale.set(sx, sz, sy);
     this.tmp.updateMatrix();
+    if (this.group) this.tmp.matrix.premultiply(this.group);
     const i = mesh.count++;
     mesh.setMatrixAt(i, this.tmp.matrix);
     if (color) mesh.setColorAt(i, this.color.set(color));
     mesh.userData.keys[i] = k;
   }
 
+  // Following parts are scaled and tipped around the base of tile (x, y).
+  setGroup(x, y, z, scale = 1, tip = 0, tipDir = 0) {
+    if (scale === 1 && !tip) { this.group = null; return; }
+    const m = this.group || (this.group = new THREE.Matrix4());
+    const pivot = new THREE.Vector3(x + 0.5, z, y + 0.5);
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(Math.cos(tipDir), 0, -Math.sin(tipDir)), tip);
+    m.compose(pivot, q, new THREE.Vector3(scale, scale, scale));
+    m.multiply(new THREE.Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z));
+  }
+
+  drawTree(P, k, type, bx, by, z, apples) {
+    if (type === 'pine') {
+      this.part(P.trunk, k, bx + 0.39, by + 0.39, z, 0.22, 0.22, 0.8);
+      this.part(P.pine, k, bx + 0.08, by + 0.08, z + 0.6, 0.84, 0.84, 0.6);
+      this.part(P.pine, k, bx + 0.2, by + 0.2, z + 1.2, 0.6, 0.6, 0.6);
+      this.part(P.pine, k, bx + 0.32, by + 0.32, z + 1.8, 0.36, 0.36, 0.55);
+      return;
+    }
+    this.part(P.trunk, k, bx + 0.38, by + 0.38, z, 0.24, 0.24, 1.3);
+    this.part(P.leaves, k, bx + 0.1, by + 0.1, z + 1.05, 0.8, 0.8, 0.85);
+    this.part(P.leaves, k, bx + 0.26, by + 0.26, z + 1.9, 0.48, 0.48, 0.42);
+    if (type === 'fruittree') {
+      const spots = [[0.9, 0.3, 1.45], [0.9, 0.66, 1.2], [0.45, 0.9, 1.4]];
+      for (let i = 0; i < (apples || 0); i++) {
+        const [ax, ay, az] = spots[i];
+        this.part(P.solid, k, bx + ax - 0.08, by + ay - 0.08, z + az, 0.16, 0.16, 0.16, '#e8473d');
+      }
+    }
+  }
+
+  // A chopped tree tips over and shrinks away.
+  fall(x, y, type, now) {
+    const z = this.world.height[y * this.world.size + x];
+    const c = this.camAxes().right;
+    this.fallers.push({ x, y, z, type, t0: now, dir: Math.atan2(-c.y, c.x) });
+    this.natureDirty = true;
+  }
+
   rebuildNature(now) {
     const w = this.world, P = this.parts;
     for (const m of Object.values(P)) m.count = 0;
-    let shaking = false;
+    let busy = false;
     for (const k in w.objects) {
       const o = refresh(w.objects[k], now);
       const [x, y] = k.split(',').map(Number);
       const z = w.height[y * w.size + x];
       let dx = 0;
       const sk = this.shakes.get(k);
-      if (sk && sk > now) { dx = Math.sin(now / 22) * 0.06; shaking = true; }
+      if (sk && sk > now) { dx = Math.sin(now / 22) * 0.06; busy = true; }
       const bx = x + dx, by = y - dx;
       switch (o.type) {
-        case 'tree': case 'fruittree':
-          if (!o.left && o.type === 'tree') { this.part(P.trunk, k, bx + 0.36, by + 0.36, z, 0.28, 0.28, 0.3); break; }
-          this.part(P.trunk, k, bx + 0.38, by + 0.38, z, 0.24, 0.24, 1.3);
-          this.part(P.leaves, k, bx + 0.1, by + 0.1, z + 1.05, 0.8, 0.8, 0.85);
-          this.part(P.leaves, k, bx + 0.26, by + 0.26, z + 1.9, 0.48, 0.48, 0.42);
-          if (o.type === 'fruittree') {
-            const spots = [[0.9, 0.3, 1.45], [0.9, 0.66, 1.2], [0.45, 0.9, 1.4]];
-            for (let i = 0; i < o.left; i++) {
-              const [ax, ay, az] = spots[i];
-              this.part(P.solid, k, bx + ax - 0.08, by + ay - 0.08, z + az, 0.16, 0.16, 0.16, '#e8473d');
-            }
-          }
+        case 'tree': case 'fruittree': case 'pine':
+          this.drawTree(P, k, o.type, bx, by, z, o.apples);
           break;
-        case 'pine':
-          if (!o.left) { this.part(P.trunk, k, bx + 0.36, by + 0.36, z, 0.28, 0.28, 0.3); break; }
-          this.part(P.trunk, k, bx + 0.39, by + 0.39, z, 0.22, 0.22, 0.8);
-          this.part(P.pine, k, bx + 0.08, by + 0.08, z + 0.6, 0.84, 0.84, 0.6);
-          this.part(P.pine, k, bx + 0.2, by + 0.2, z + 1.2, 0.6, 0.6, 0.6);
-          this.part(P.pine, k, bx + 0.32, by + 0.32, z + 1.8, 0.36, 0.36, 0.55);
+        case 'rock': {
+          const hp = o.hp || 3;
+          this.part(P.rock, k, bx + 0.12, by + 0.16, z, 0.58, 0.52, 0.3 + hp * 0.05);
+          if (hp > 1) this.part(P.rock, k, bx + 0.4, by + 0.38, z, 0.46, 0.46, 0.5 + hp * 0.08);
+          if (hp > 2) this.part(P.rock, k, bx + 0.16, by + 0.58, z, 0.32, 0.3, 0.3);
           break;
-        case 'rock':
-          if (!o.left) { this.part(P.rock, k, bx + 0.35, by + 0.38, z, 0.3, 0.26, 0.18); break; }
-          this.part(P.rock, k, bx + 0.12, by + 0.16, z, 0.58, 0.52, 0.45);
-          this.part(P.rock, k, bx + 0.4, by + 0.38, z, 0.46, 0.46, 0.72);
-          if (o.left > 1) this.part(P.rock, k, bx + 0.16, by + 0.58, z, 0.32, 0.3, 0.3);
-          break;
+        }
         case 'flower': {
           const c = ['#ff7eb6', '#ffd23f', '#b48cff', '#ffffff'][o.color || 0];
           this.part(P.solid, k, x + 0.46, y + 0.46, z, 0.08, 0.08, 0.32, '#3f9c3f');
@@ -258,14 +283,49 @@ export class Renderer3D {
           this.part(P.solid, k, x + 0.34, y + 0.38, z, 0.32, 0.26, 0.1, '#ffb3c1');
           this.part(P.solid, k, x + 0.4, y + 0.42, z + 0.1, 0.2, 0.16, 0.05, '#ffd6de');
           break;
+        case 'soil':
+          this.part(P.soil, k, x + 0.04, y + 0.04, z, 0.92, 0.92, 0.05);
+          break;
+        case 'sapling': {
+          this.part(P.soil, k, x + 0.04, y + 0.04, z, 0.92, 0.92, 0.05);
+          const g = growth(o, now);
+          if (g < 0.3) {
+            // A little sprout with two leaves.
+            const h = 0.12 + g * 0.6;
+            this.part(P.solid, k, x + 0.47, y + 0.47, z + 0.05, 0.06, 0.06, h, '#4fae4a');
+            this.part(P.solid, k, x + 0.33, y + 0.45, z + 0.05 + h, 0.14, 0.1, 0.05, '#63c759');
+            this.part(P.solid, k, x + 0.53, y + 0.45, z + 0.05 + h, 0.14, 0.1, 0.05, '#63c759');
+          } else {
+            this.setGroup(x, y, z + 0.05, 0.25 + 0.6 * g);
+            this.drawTree(P, k, o.grows, x, y, z + 0.05, 0);
+            this.setGroup();
+          }
+          break;
+        }
       }
     }
+    // Trees that were just chopped down.
+    this.fallers = this.fallers.filter((f) => {
+      const t = (now - f.t0) / 700;
+      if (t >= 1) return false;
+      busy = true;
+      this.setGroup(f.x, f.y, f.z, 1 - Math.max(0, t - 0.6) * 2.5, Math.min(1, t * 1.6) * Math.PI / 2, f.dir);
+      this.drawTree(P, null, f.type, f.x, f.y, f.z, 0);
+      this.setGroup();
+      return true;
+    });
     for (const m of Object.values(P)) {
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
       m.computeBoundingSphere();
     }
-    this.natureDirty = shaking;
+    this.natureDirty = busy;
+    this.growing = this.hasSaplings(w);
+  }
+
+  hasSaplings(w) {
+    for (const k in w.objects) if (w.objects[k].type === 'sapling') return true;
+    return false;
   }
 
   markDirty() { this.natureDirty = true; }
@@ -422,7 +482,7 @@ export class Renderer3D {
     this.sun.position.set(this.target.x - 10, this.target.y + 22, this.target.z + 6);
     this.sun.target.position.copy(this.target);
 
-    if (this.natureDirty || now - this.lastNature > 1000) { this.rebuildNature(now); this.lastNature = now; }
+    if (this.natureDirty || now - this.lastNature > (this.growing ? 200 : 1000)) { this.rebuildNature(now); this.lastNature = now; }
 
     this.foam.material.opacity = 0.35 + Math.sin(t * 1.6) * 0.15;
     this.water.position.y = WATER_Y + Math.sin(t * 0.9) * 0.025;

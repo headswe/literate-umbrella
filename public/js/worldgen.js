@@ -79,11 +79,11 @@ export function generateWorld(seed) {
       if (terrain[i] === T.GRASS) {
         const f = forest(x, y);
         if (f > 0.58 && r < 0.45) {
-          objects[key(x, y)] = { type: rand() < 0.35 ? 'pine' : 'tree', left: 3 };
+          objects[key(x, y)] = { type: rand() < 0.35 ? 'pine' : 'tree', hp: 3 };
         } else if (r < 0.025) {
-          objects[key(x, y)] = { type: 'fruittree', left: 3 };
+          objects[key(x, y)] = { type: 'fruittree', hp: 3, apples: 3 };
         } else if (r < 0.045) {
-          objects[key(x, y)] = { type: 'rock', left: 3 };
+          objects[key(x, y)] = { type: 'rock', hp: 3 };
         } else if (r < 0.1) {
           objects[key(x, y)] = { type: 'flower', color: Math.floor(rand() * 4) };
         }
