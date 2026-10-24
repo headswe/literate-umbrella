@@ -16,6 +16,7 @@ const SAVES = process.env.SAVES_DIR || join(HERE, 'saves');
 const VENDOR = {
   '/vendor/three.module.min.js': join(HERE, 'node_modules/three/build/three.module.min.js'),
   '/vendor/peerjs.min.js': join(HERE, 'node_modules/peerjs/dist/peerjs.min.js'),
+  '/vendor/mqtt.min.js': join(HERE, 'node_modules/mqtt/dist/mqtt.min.js'),
 };
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
 

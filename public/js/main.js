@@ -3,7 +3,7 @@ import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAG
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
 import { connect } from './net.js';
 import * as p2p from './p2p.js';
-import { speak, stopSpeaking } from './speech.js';
+import { speak, stopSpeaking, unlockSpeech, isSpeaking } from './speech.js';
 import { Renderer3D } from './render3d.js';
 import { findPath } from './path.js';
 import { sfx, unlockAudio, setMuted, isMuted } from './audio.js';
@@ -614,8 +614,9 @@ function handle(patches) {
         sfx.grow();
         if (mine) {
           const msg = `Tack så jättemycket! Här får du ${p.stars} ${p.stars > 1 ? 'stjärnor' : 'stjärna'} och ${amount(p.gift, 2)}!`;
-          if (talking === p.vid) { $('talkText').textContent = msg; $('talkGive').hidden = true; $('talkHearts').textContent = '❤️'.repeat(Math.min(10, world.villagers[p.vid].hearts)); speak(msg); }
+          if (talking === p.vid) { $('talkText').textContent = msg; $('talkGive').hidden = true; $('talkHearts').textContent = '❤️'.repeat(Math.min(10, world.villagers[p.vid].hearts)); }
           else toast(`${info.name} blev jätteglad! ⭐`);
+          say(p.vid, msg);
         }
         break;
       }
@@ -627,7 +628,8 @@ function handle(patches) {
         renderer.burst(p.x, p.y, z + 1, '#ffd23f', 30);
         sfx.grow();
         toast(`${info.name} har flyttat in! 🏠`);
-        speak(`${info.name} har flyttat in!`);
+        // The bubble shows once they have walked out; the voice starts right away.
+        setTimeout(() => say(p.vid, `Hej allihop! Jag heter ${info.name}. Nu bor jag här på ön!`), 600);
         break;
       }
       case 'someonelives':
@@ -797,7 +799,8 @@ function villagerActors(dt) {
     else if (d > 0.01) { const k = Math.min(1, step / d); p.x += dx * k; p.y += dy * k; p.angle = Math.atan2(dx, dy); moving = true; }
     p.z = (p.z ?? heightAt(world, Math.floor(p.x), Math.floor(p.y)));
     p.z += (heightAt(world, Math.floor(p.x), Math.floor(p.y)) - p.z) * Math.min(1, dt * 12);
-    out.push({ id: 'v:' + v.id, kind: VIL[v.id].kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving, name: VIL[v.id].name, bubble: wishBubble(v), swing: p.swing });
+    const bubble = p.sayUntil > Date.now() ? `<span class="say">${escapeHtml(p.sayText)}</span>` : wishBubble(v);
+    out.push({ id: 'v:' + v.id, kind: VIL[v.id].kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving, name: VIL[v.id].name, bubble, swing: p.swing });
   }
   return out;
 }
@@ -816,6 +819,47 @@ function wishText(v) {
 const HELLO = ['Hej {namn}!', 'Hejsan {namn}!', 'Åh, hej {namn}!', 'Vad roligt att se dig, {namn}!'];
 let talking = null;
 
+// ---------------------------------------------------------------- villagers talking out loud
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const escapeHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const GREET = {
+  unicorn: ['Hej {namn}! Vilken magisk dag!', 'Hallå {namn}! Glitter och regnbågar!'],
+  bear: ['Mmm, hej {namn}.', 'Nämen, hej {namn}! Har du sett några äpplen?'],
+  robot: ['Pip pip! Hej {namn}!', 'Bip bop! Hej {namn}, min kompis!'],
+  bunny: ['Hoppsan! Hej {namn}!', 'Hej {namn}! Jag hoppar av glädje!'],
+  fox: ['Hej {namn}! Hittar du något kul?', 'Psst, {namn}! Vad gör du?'],
+  frog: ['Kvack kvack! Hej {namn}!', 'Hej {namn}! Vattnet är så skönt idag.'],
+  pig: ['Nöff! Hej {namn}!', 'Hej {namn}! Jag är lite hungrig.'],
+  cat: ['Mjau! Hej {namn}!', 'Hej {namn}. Jag tog just en tupplur.'],
+};
+const CHAT = ['Vilket fint väder idag!', 'Jag tycker om vår ö.', 'Tryck på mig om du vill prata!', 'Har du sett blommorna?', 'Du är en bra kompis!'];
+const BYE = ['Hej då!', 'Vi ses!', 'Hej då, kom snart tillbaka!', 'Ha det så bra!'];
+const greetAt = new Map();  // villager id -> when they may greet again
+let nextChat = 0;           // nobody starts chatting before this
+
+// A villager says something: out loud in their own voice, and in a speech bubble.
+function say(vid, text, polite = false) {
+  const p = vilPos.get(vid);
+  if (p) { p.sayText = text; p.sayUntil = Date.now() + Math.max(3500, text.length * 110); }
+  speak(text, VIL[vid].voice, polite);
+}
+
+// Friends say hello when you walk past, now and then, but never all at once.
+function greetNearby(now) {
+  if (now < nextChat || talking || isSpeaking()) return;
+  for (const v of Object.values(world.villagers || {})) {
+    const p = vilPos.get(v.id);
+    if (!p || Math.hypot(p.x - me.x, p.y - me.y) > 2.6 || (greetAt.get(v.id) || 0) > now) continue;
+    const hello = pick(GREET[VIL[v.id].kind] || HELLO).replace('{namn}', me.name || 'kompis');
+    say(v.id, Math.random() < 0.35 ? `${hello} ${pick(CHAT)}` : hello, true);
+    p.angle = Math.atan2(me.x - p.x, me.y - p.y);
+    p.swing = now + 300;
+    greetAt.set(v.id, now + 60000);
+    nextChat = now + 9000;
+    return;
+  }
+}
+
 function openTalk(vid) {
   const v = world.villagers[vid], info = VIL[vid];
   talking = vid;
@@ -833,14 +877,22 @@ function openTalk(vid) {
     give.textContent = has ? `Ge ${v.wish.n} ${ITEMS[v.wish.item].icon}` : `Du har ${inv()[v.wish.item] || 0} av ${v.wish.n} ${ITEMS[v.wish.item].icon}`;
   } else give.hidden = true;
   $('talkSheet').hidden = false;
-  speak(text);
+  speak(text, info.voice);
+  greetAt.set(vid, Date.now() + 60000);
   const p = vilPos.get(vid);
   if (p) { p.angle = Math.atan2(me.x - p.x, me.y - p.y); p.swing = Date.now() + 250; }
 }
 
-function closeTalk() { $('talkSheet').hidden = true; talking = null; stopSpeaking(); }
+function closeTalk() {
+  if ($('talkSheet').hidden) return;
+  const vid = talking;
+  $('talkSheet').hidden = true;
+  talking = null;
+  if (vid) say(vid, pick(BYE)); else stopSpeaking();
+  nextChat = Date.now() + 6000;
+}
 $('talkBye').onclick = closeTalk;
-$('talkSay').onclick = () => speak($('talkText').textContent);
+$('talkSay').onclick = () => talking && speak($('talkText').textContent, VIL[talking].voice);
 $('talkSheet').addEventListener('pointerdown', (e) => { if (e.target === $('talkSheet')) closeTalk(); });
 $('talkGive').onclick = () => {
   if (!talking) return;
@@ -1004,6 +1056,7 @@ function frame(t) {
     if (sim) share(sim.tick(now));
     if (shared || hosting) sendPos(t);
     if (dirty && t - lastSave > 4000) { save(); lastSave = t; }
+    greetNearby(now);
     renderer.render({ players: [me, ...remoteActors(dt), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
   } else if (world) {
     renderer.yawTarget += dt * 0.12;
@@ -1019,5 +1072,8 @@ showDemo();
 renderTitle();
 requestAnimationFrame(frame);
 
+// Speech on iPad and iPhone has to be started from a tap.
+for (const ev of ['click', 'touchend']) document.addEventListener(ev, unlockSpeech, { capture: true, passive: true });
+
 // Test hook for automated browser checks: open the game with ?debug.
-if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, remotes, act, get world() { return world; }, get sim() { return sim; }, get shared() { return shared; } };
+if (/[?&]debug\b/.test(location.search)) window.__myson = { renderer, me, remotes, act, vilPos, get world() { return world; }, get sim() { return sim; }, get shared() { return shared; } };

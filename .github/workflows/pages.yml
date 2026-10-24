@@ -27,11 +27,12 @@ jobs:
         with:
           node-version: 20
       - run: npm ci
-      - name: Copy three.js and PeerJS next to the game
+      - name: Copy three.js, PeerJS and MQTT next to the game
         run: |
           mkdir -p public/vendor
           cp node_modules/three/build/three.module.min.js public/vendor/
           cp node_modules/peerjs/dist/peerjs.min.js public/vendor/
+          cp node_modules/mqtt/dist/mqtt.min.js public/vendor/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

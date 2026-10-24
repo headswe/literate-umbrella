@@ -78,15 +78,16 @@ export const BUILD_CATS = [
 ];
 
 // Friends who can move to the island. The first one lives in a tent from the start.
+// voice: pitch and speed for the built-in speech, so every friend sounds like themselves.
 export const VILLAGERS = [
-  { id: 'stjarna', name: 'Stjärna', kind: 'unicorn', roof: '#ff7eb6', likes: ['rainbow', 'statue', 'pot'], gives: ['flower', 'fruit'] },
-  { id: 'bosse', name: 'Bosse', kind: 'bear', roof: '#c0392b', likes: ['campfire', 'bench', 'table'], gives: ['fruit', 'wood'] },
-  { id: 'pip', name: 'Pip', kind: 'robot', roof: '#4fb3ff', likes: ['rocket', 'lamp', 'mailbox'], gives: ['stone', 'wood'] },
-  { id: 'lisa', name: 'Lisa', kind: 'bunny', roof: '#b48cff', likes: ['pot', 'bed', 'fountain'], gives: ['flower', 'fruit'] },
-  { id: 'rufus', name: 'Rufus', kind: 'fox', roof: '#e8742f', likes: ['campfire', 'shelf', 'lamp'], gives: ['wood', 'stone'] },
-  { id: 'kvack', name: 'Kvack', kind: 'frog', roof: '#4fae4a', likes: ['fountain', 'bench', 'pot'], gives: ['shell', 'flower'] },
-  { id: 'nisse', name: 'Nisse', kind: 'pig', roof: '#ff9cb8', likes: ['table', 'chair', 'campfire'], gives: ['fruit', 'flower'] },
-  { id: 'misse', name: 'Misse', kind: 'cat', roof: '#ffd23f', likes: ['bed', 'shelf', 'chair'], gives: ['shell', 'fruit'] },
+  { id: 'stjarna', name: 'Stjärna', kind: 'unicorn', roof: '#ff7eb6', likes: ['rainbow', 'statue', 'pot'], gives: ['flower', 'fruit'], voice: { pitch: 1.6, rate: 1.0 } },
+  { id: 'bosse', name: 'Bosse', kind: 'bear', roof: '#c0392b', likes: ['campfire', 'bench', 'table'], gives: ['fruit', 'wood'], voice: { pitch: 0.55, rate: 0.85 } },
+  { id: 'pip', name: 'Pip', kind: 'robot', roof: '#4fb3ff', likes: ['rocket', 'lamp', 'mailbox'], gives: ['stone', 'wood'], voice: { pitch: 1.9, rate: 1.15 } },
+  { id: 'lisa', name: 'Lisa', kind: 'bunny', roof: '#b48cff', likes: ['pot', 'bed', 'fountain'], gives: ['flower', 'fruit'], voice: { pitch: 1.75, rate: 1.1 } },
+  { id: 'rufus', name: 'Rufus', kind: 'fox', roof: '#e8742f', likes: ['campfire', 'shelf', 'lamp'], gives: ['wood', 'stone'], voice: { pitch: 1.1, rate: 1.05 } },
+  { id: 'kvack', name: 'Kvack', kind: 'frog', roof: '#4fae4a', likes: ['fountain', 'bench', 'pot'], gives: ['shell', 'flower'], voice: { pitch: 0.8, rate: 1.0 } },
+  { id: 'nisse', name: 'Nisse', kind: 'pig', roof: '#ff9cb8', likes: ['table', 'chair', 'campfire'], gives: ['fruit', 'flower'], voice: { pitch: 1.3, rate: 0.9 } },
+  { id: 'misse', name: 'Misse', kind: 'cat', roof: '#ffd23f', likes: ['bed', 'shelf', 'chair'], gives: ['shell', 'fruit'], voice: { pitch: 1.45, rate: 0.95 } },
 ];
 
 // How long a planted seed takes to become a tree.
