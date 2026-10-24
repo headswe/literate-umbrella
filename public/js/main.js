@@ -1,5 +1,5 @@
 // Boot, game loop, input and HUD.
-import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES } from './data.js';
+import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS, RECIPES, COLLECTION } from './data.js';
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
 import { connect } from './net.js';
 import * as p2p from './p2p.js';
@@ -352,6 +352,7 @@ function startGame(save, onServer = false) {
   $('buildSheet').hidden = true;
   $('talkSheet').hidden = true;
   $('cookSheet').hidden = true;
+  $('museumSheet').hidden = true;
   me.boost = 0;
   ensureThumbs();
   vilPos.clear();
@@ -396,6 +397,7 @@ const iconHTML = (id) => {
   const it = ITEMS[id];
   return `<span class="ic" aria-hidden="true">${it.svg || it.icon}</span>`;
 };
+const AUTO_TOOLS = ['axe', 'pickaxe', 'rod', 'net'];
 const usable = (id) => ['tool', 'seed', 'place'].includes(ITEMS[id].kind);
 
 // Hotbar: hand, tools and seeds you have. Materials live in the backpack.
@@ -404,15 +406,26 @@ function renderInventory() {
   if (ITEMS[me.sel] && me.sel !== 'hand' && !bag[me.sel]) me.sel = 'hand';
   const bar = $('hotbar');
   bar.innerHTML = '';
-  for (const id of ITEM_ORDER) {
-    if (!usable(id) || (id !== 'hand' && !bag[id])) continue;
+  // Keep the bar short enough for a phone: tools that are picked by themselves (axe, pickaxe,
+  // rod, net) only show while in use, and all seeds share one slot.
+  const seeds = ITEM_ORDER.filter((id) => ITEMS[id].kind === 'seed' && bag[id]);
+  if (ITEMS[me.sel]?.kind === 'seed') me.seed = me.sel;
+  const seed = seeds.includes(me.seed) ? me.seed : seeds[0];
+  const slots = ['hand'];
+  if (AUTO_TOOLS.includes(me.sel)) slots.push(me.sel);
+  for (const id of ['hoe', 'shovel']) if (bag[id]) slots.push(id);
+  if (seed) slots.push(seed);
+  if (bag.dirt) slots.push('dirt');
+  for (const id of slots) {
     const b = document.createElement('button');
     b.className = 'slot';
     b.dataset.id = id;
     b.setAttribute('aria-label', ITEMS[id].name);
     b.setAttribute('aria-pressed', String(me.sel === id));
-    b.innerHTML = iconHTML(id) + (ITEMS[id].kind === 'seed' || ITEMS[id].kind === 'place' ? `<span class="n">${bag[id]}</span>` : '');
-    b.onclick = () => select(id);
+    const many = id === seed && seeds.length > 1 ? '<span class="more">⇄</span>' : '';
+    b.innerHTML = iconHTML(id) + (ITEMS[id].kind === 'seed' || ITEMS[id].kind === 'place' ? `<span class="n">${bag[id]}</span>` : '') + many;
+    // Tapping the seed slot again switches to the next kind of seed.
+    b.onclick = () => (id === seed && me.sel === seed && seeds.length > 1 ? select(seeds[(seeds.indexOf(seed) + 1) % seeds.length]) : select(id));
     bar.appendChild(b);
   }
   // Build button, plus the thing you are building right now.
@@ -534,11 +547,15 @@ $('bagSheet').addEventListener('pointerdown', (e) => { if (e.target === $('bagSh
 function select(id) {
   me.sel = id;
   sfx.pop();
-  for (const b of $('hotbar').children) if (b.dataset.id) b.setAttribute('aria-pressed', String(b.dataset.id === id));
+  renderInventory();
   $('rotBuild').hidden = !id.startsWith('build:');
   if (hintShown) { hintShown = false; $('hint').hidden = true; }
-  const tips = { hoe: 'Tryck på gräset för att göra jord', axe: 'Tryck på ett träd för att hugga', pickaxe: 'Tryck på en sten för att hacka', pickup: 'Tryck på något du byggt för att plocka upp det' };
-  if (ITEMS[id]?.kind === 'seed') toast('Tryck på jorden för att plantera');
+  const tips = {
+    hoe: 'Tryck på gräset för att göra jord', axe: 'Tryck på ett träd för att hugga', pickaxe: 'Tryck på en sten för att hacka',
+    shovel: 'Tryck på gräset för en väg, eller på ett X', dirt: 'Tryck för att fylla ett hål eller bygga en kulle',
+    rod: 'Tryck på vattnet för att fiska', net: 'Tryck på ett litet djur för att fånga det', pickup: 'Tryck på något du byggt för att plocka upp det',
+  };
+  if (ITEMS[id]?.kind === 'seed') toast(`${ITEMS[id].name}: tryck på jorden för att plantera`);
   else if (id.startsWith('build:')) toast('Tryck där du vill bygga');
   else if (tips[id]) toast(tips[id]);
 }
@@ -565,6 +582,7 @@ function toast(text) {
 const BURST = { tree: '#5cbf52', pine: '#2f8a52', fruittree: '#e8473d', rock: '#b4bcc4', flower: '#ff7eb6', shell: '#ffb3c1' };
 const SAY = {
   noapples: 'Inga äpplen just nu 🍎 Hugg med yxan 🪓?',
+  noberries: 'Inga blåbär just nu 🫐 De växer tillbaka snart!',
   needsoil: 'Gör jord först med jordhackan',
   needtool: 'Du behöver rätt verktyg',
   occupied: 'Här står redan något',
@@ -613,6 +631,16 @@ function handle(patches) {
         }, p.delay);
         break;
       }
+      case 'caught':
+        renderer.burst(p.x, p.y, z + 0.5, '#fff7b0', 14);
+        renderer.floatText(p.x, p.y, z + 0.4, ITEMS[p.item].icon, '+1');
+        if (mine) { sfx.gain(); toast(`Du fångade ${ITEMS[p.item].one}! ${ITEMS[p.item].icon}`); }
+        break;
+      case 'donated':
+        renderer.burst(p.x + 0.5, p.y + 0.5, z + 1.5, '#ffd23f', 24);
+        if (mine) { sfx.grow(); toast(`Tack! Nu finns ${ITEMS[p.item].one} på museet ⭐`); }
+        if (museumAt) renderMuseum();
+        break;
       case 'cooked':
         renderer.burst(p.x, p.y, z + 0.6, '#ffb347', 16);
         renderer.floatText(p.x, p.y, z + 0.4, ITEMS[p.item].icon, '+1');
@@ -756,6 +784,7 @@ function goTalk(vid) {
 
 function doAct(tx, ty, what) {
   if (what.type === 'cookmenu') { face(tx + 0.5 - me.x, ty + 0.5 - me.y); openCook(tx, ty); return; }
+  if (what.type === 'museummenu') { face(tx + 1 - me.x, ty + 1 - me.y); openMuseum(tx, ty); return; }
   if (what.type === 'talk') {
     const v = world.villagers[what.vid];
     face(v.x - me.x, v.y - me.y);
@@ -822,6 +851,7 @@ function tapAt(sx, sy) {
     return goUse(x, y, 'rod');
   }
   if (obj && obj.type === 'build' && obj.id === 'campfire' && !sel.startsWith('build:') && sel !== 'pickup') return goAct(x, y, { type: 'cookmenu' });
+  if (obj && obj.type === 'build' && obj.id === 'museum' && !sel.startsWith('build:') && sel !== 'pickup') return goMuseum(x, y);
 
   // Seeds go in soil, the hoe works on grass.
   if (kind === 'seed' && obj && obj.type === 'soil') return goUse(x, y, sel);
@@ -1059,9 +1089,59 @@ function closeCook() { $('cookSheet').hidden = true; cookAt = null; }
 $('cookClose').onclick = closeCook;
 $('cookSheet').addEventListener('pointerdown', (e) => { if (e.target === $('cookSheet')) closeCook(); });
 
+// ---------------------------------------------------------------- museum
+let museumAt = null;
+// The museum is 2×2; walk up to any side of it.
+function goMuseum(x, y) {
+  const goal = (ax, ay) => ax >= x - 1 && ax <= x + 2 && ay >= y - 1 && ay <= y + 2;
+  if (goal(Math.floor(me.x), Math.floor(me.y))) return openMuseum(x, y);
+  const path = findPath(world, Math.floor(me.x), Math.floor(me.y), goal, x, y);
+  if (!path) { sfx.nope(); return; }
+  me.path = path; me.action = { x, y, act: { type: 'museummenu' } }; marker = { x, y };
+}
+function openMuseum(x, y) {
+  museumAt = { x, y };
+  renderMuseum();
+  $('museumSheet').hidden = false;
+}
+function renderMuseum() {
+  const list = $('museumList');
+  list.innerHTML = '';
+  const shown = world.museum || {};
+  let done = 0;
+  for (const id of COLLECTION) {
+    const b = document.createElement('button');
+    b.className = 'bag-item museum-item';
+    b.innerHTML = `<span class="ic"></span><span></span><span class="who"></span>`;
+    b.children[0].textContent = ITEMS[id].icon;
+    if (shown[id]) {
+      done++;
+      b.children[1].textContent = ITEMS[id].name;
+      b.children[2].textContent = `från ${shown[id]}`;
+      b.disabled = true;
+    } else if (inv()[id] > 0) {
+      b.classList.add('ready');
+      b.children[1].textContent = ITEMS[id].name;
+      b.children[2].textContent = 'Tryck för att ge';
+      b.onclick = () => museumAt && act({ type: 'donate', item: id, x: museumAt.x, y: museumAt.y, by: me.id });
+    } else {
+      b.classList.add('missing');
+      b.children[1].textContent = '???';
+      b.disabled = true;
+    }
+    list.appendChild(b);
+  }
+  $('museumNote').textContent = done === COLLECTION.length
+    ? 'Museet är fullt! Vilka fina fynd! 🎉'
+    : `${done} av ${COLLECTION.length} på museet. Ge en av varje fisk och småkryp, så får du en ⭐ för varje ny!`;
+}
+function closeMuseum() { $('museumSheet').hidden = true; museumAt = null; }
+$('museumClose').onclick = closeMuseum;
+$('museumSheet').addEventListener('pointerdown', (e) => { if (e.target === $('museumSheet')) closeMuseum(); });
+
 // The tastiest food you carry, for treating a friend.
 function bestFood() {
-  return ['pie', 'soup', 'grilled', 'fruit'].find((id) => inv()[id] > 0) || null;
+  return ['pie', 'soup', 'muffin', 'carrotsoup', 'grilled', 'fruit', 'carrot', 'berry'].find((id) => inv()[id] > 0) || null;
 }
 function updateTreat() {
   const food = bestFood();
@@ -1304,6 +1384,7 @@ window.addEventListener('popstate', () => {
   else if (!$('bagSheet').hidden) closeBag();
   else if (!$('buildSheet').hidden) closeBuild();
   else if (!$('cookSheet').hidden) closeCook();
+  else if (!$('museumSheet').hidden) closeMuseum();
   else toast('Tryck på 🏠 för att gå hem');
 });
 

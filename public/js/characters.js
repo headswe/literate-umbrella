@@ -198,3 +198,94 @@ function finish(root, bodyG, head, legs, tail, biped) {
     },
   };
 }
+
+// ---------------------------------------------------------------- little animals
+// Butterflies, bees and friends that visit the island. Each wanders around its own tile;
+// `seed` makes every one move a little differently.
+export function makeBug(kind, seed = 0) {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const wings = [];
+  const segs = [];
+  const ph = seed * 2.4;
+  switch (kind) {
+    case 'butterfly': {
+      box(body, 0.04, 0.04, 0.16, '#2b2646', 0, 0, 0);
+      for (const sx of [-1, 1]) {
+        const wg = new THREE.Group();
+        box(wg, 0.16, 0.02, 0.2, '#ff7eb6', sx * 0.09, 0, 0.02);
+        box(wg, 0.06, 0.025, 0.06, '#ffd23f', sx * 0.11, 0, 0.04);
+        box(wg, 0.11, 0.02, 0.12, '#b48cff', sx * 0.07, 0, -0.1);
+        body.add(wg);
+        wings.push([wg, sx]);
+      }
+      break;
+    }
+    case 'bee': {
+      box(body, 0.12, 0.11, 0.18, '#ffd23f', 0, 0, 0);
+      box(body, 0.125, 0.115, 0.04, '#2b2646', 0, 0, -0.02);
+      box(body, 0.125, 0.115, 0.03, '#2b2646', 0, 0, -0.08);
+      for (const sx of [-1, 1]) {
+        const wg = new THREE.Group();
+        wg.position.set(0, 0.06, 0.02);
+        box(wg, 0.12, 0.015, 0.08, '#e9f6ff', sx * 0.07, 0, 0);
+        body.add(wg);
+        wings.push([wg, sx]);
+      }
+      break;
+    }
+    case 'ladybug':
+      box(body, 0.16, 0.08, 0.18, '#e8322f', 0, 0.04, 0);
+      box(body, 0.1, 0.06, 0.06, '#1b1b22', 0, 0.03, 0.11);
+      for (const [dx, dz] of [[-0.04, 0.03], [0.045, -0.02], [-0.03, -0.05], [0.03, 0.05]]) box(body, 0.035, 0.02, 0.035, '#1b1b22', dx, 0.085, dz);
+      break;
+    case 'snail':
+      box(body, 0.08, 0.05, 0.26, '#d9c79a', 0, 0.025, 0);
+      box(body, 0.14, 0.14, 0.14, '#b77b45', 0, 0.12, -0.03);
+      box(body, 0.08, 0.08, 0.145, '#d79b5f', 0, 0.12, -0.03);
+      box(body, 0.015, 0.07, 0.015, '#d9c79a', -0.02, 0.08, 0.12);
+      box(body, 0.015, 0.07, 0.015, '#d9c79a', 0.02, 0.08, 0.12);
+      break;
+    case 'cricket':
+      box(body, 0.07, 0.07, 0.24, '#6fbf3f', 0, 0.06, 0);
+      box(body, 0.08, 0.08, 0.07, '#5aa632', 0, 0.07, 0.13);
+      for (const sx of [-1, 1]) box(body, 0.02, 0.1, 0.16, '#4f9a2c', sx * 0.05, 0.08, -0.06);
+      break;
+    default: // caterpillar
+      for (let i = 0; i < 5; i++) segs.push(box(body, 0.08, 0.08, 0.07, i === 4 ? '#3f9c3f' : i % 2 ? '#7fd35c' : '#63c759', 0, 0.04, -0.14 + i * 0.07));
+      box(body, 0.02, 0.02, 0.02, '#1b1b22', 0.025, 0.07, 0.15);
+      break;
+  }
+  root.scale.setScalar(1.4); // a bit bigger than life, so small fingers can see them
+  return {
+    root,
+    // Moves the animal around the middle of its tile (cx, cy) on ground height z.
+    update(t, cx, cy, z) {
+      const T = t + ph;
+      let x = 0, y = 0, h = 0, yaw = 0;
+      if (kind === 'butterfly' || kind === 'bee') {
+        const r = kind === 'bee' ? 0.25 : 0.35;
+        x = Math.cos(T * 0.9) * r; y = Math.sin(T * 1.3) * r;
+        h = (kind === 'bee' ? 0.6 : 0.7) + Math.sin(T * 2.1) * 0.15;
+        yaw = Math.atan2(-Math.sin(T * 0.9) * 0.9, Math.cos(T * 1.3) * 1.3);
+        const flap = kind === 'bee' ? Math.sin(T * 60) * 0.5 : Math.sin(T * 14) * 0.9;
+        for (const [wg, sx] of wings) wg.rotation.z = sx * flap;
+      } else if (kind === 'cricket') {
+        const hop = (T * 0.8) % 2;
+        const a = Math.floor(T * 0.4) * 2.1;
+        const s = Math.min(1, hop);
+        x = Math.cos(a) * 0.25 * s; y = Math.sin(a) * 0.25 * s;
+        h = hop < 1 ? Math.sin(hop * Math.PI) * 0.35 : 0;
+        yaw = a;
+      } else {
+        const speed = kind === 'snail' ? 0.15 : kind === 'caterpillar' ? 0.25 : 0.5;
+        x = Math.cos(T * speed) * 0.25; y = Math.sin(T * speed) * 0.25;
+        yaw = Math.atan2(-Math.sin(T * speed), Math.cos(T * speed));
+        segs.forEach((sg, i) => { sg.position.y = 0.04 + Math.max(0, Math.sin(T * 6 - i)) * 0.03; });
+      }
+      root.position.set(cx + x, z + h, cy + y);
+      root.rotation.y = yaw;
+    },
+  };
+}

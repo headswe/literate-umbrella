@@ -49,14 +49,21 @@ Spelet går också att spela ensam utan server; då sparas ön i webbläsaren.
 
 - **Samla:** yxan fäller träd (de ger trä och frön), hackan bryter sten, handen plockar
   blommor, snäckor och äpplen. Rätt verktyg väljs av sig självt när man trycker.
-- **Odla:** jordhackan gör jord i gräset, frön planteras i jorden och blir träd på en minut.
+- **Odla:** jordhackan gör jord i gräset. Trädfrön blir träd, morotsfrön blir morötter 🥕
+  och bärfrön blir bärbuskar 🫐 som ger nya bär efter en stund. Tryck på fröplatsen i
+  verktygsraden igen för att byta sorts frö (⇄).
+- **Småkryp:** fjärilar, nyckelpigor, bin, sniglar, syrsor och larver kryper och flyger
+  omkring. Tryck på ett så fångar håven det.
+- **Museum:** bygg ett museum (🔨) och ge det en av varje fisk och småkryp. Varje ny sak
+  ger en ⭐ och visar vem som hittade den.
 - **Spaden:** gör grusvägar i gräset, gräver ner vägar ett steg i taget (längst ner blir
   det en damm) och gräver upp skatter där det är ett X. Jorden man får fyller hål, lagar
   vägar och bygger kullar.
 - **Fiska:** tryck på vattnet så kastar du ut spöet 🎣. Det nappar efter en liten stund:
   fisk 🐟, guldfisk 🐠 eller en ovanlig blåsfisk 🐡.
 - **Laga mat:** tryck på en lägereld. Fisk blir grillad fisk, guldfisk och äpple blir
-  fisksoppa, tre äpplen blir äppelpaj.
+  fisksoppa, tre äpplen blir äppelpaj, två bär blir en muffin och två morötter blir
+  morotssoppa.
 - **Äta:** mat i ryggsäcken äts med ett tryck och då springer man jättesnabbt en stund.
   Ingen hunger; mat är bara något gott. Vänner blir glada av mat (Bjud på mat).
 - **Vinka:** 👋 vinkar. Vänner i närheten vinkar tillbaka, och vännerna vinkar till

@@ -6,7 +6,7 @@ import { refresh } from './sim.js';
 import { BUILDS } from './data.js';
 import { PartSet, drawTree, drawNature, drawBuild } from './models.js';
 import { makeTextures } from './textures.js';
-import { makeCharacter } from './characters.js';
+import { makeCharacter, makeBug } from './characters.js';
 
 const WATER_Y = 0.82;
 const SKY = '#a9e0f5';
@@ -54,6 +54,7 @@ export class Renderer3D {
     this.color = new THREE.Color();
 
     this.chars = new Map();
+    this.bugs = new Map(); // tile key -> visiting little animal
     this.tags = new Map();
     this.bubbles = new Map();
     this.floaters = [];
@@ -92,6 +93,8 @@ export class Renderer3D {
     this.layers = [];
     for (const c of this.chars.values()) this.scene.remove(c.root);
     this.chars.clear();
+    for (const b of this.bugs.values()) this.scene.remove(b.root);
+    this.bugs.clear();
     for (const t of this.tags.values()) t.remove();
     this.tags.clear();
     for (const b of this.bubbles.values()) b.remove();
@@ -211,7 +214,7 @@ export class Renderer3D {
   }
 
   buildNature() {
-    this.ps = new PartSet(this.scene, this.tex, 3000);
+    this.ps = new PartSet(this.scene, this.tex, 6000);
     this.layers.push(...Object.values(this.ps.meshes));
   }
 
@@ -453,9 +456,30 @@ export class Renderer3D {
     this.gl.setSize(this.W, this.H, false);
   }
 
+  // Little animals live in world.objects; give each one a moving model.
+  syncBugs(t) {
+    const w = this.world, seen = new Set();
+    for (const k in w.objects) {
+      const o = w.objects[k];
+      if (o.type !== 'bug') continue;
+      seen.add(k);
+      let b = this.bugs.get(k);
+      if (!b) {
+        const [x, y] = k.split(',').map(Number);
+        b = makeBug(o.kind, x * 7 + y * 13);
+        b.x = x; b.y = y;
+        this.scene.add(b.root);
+        this.bugs.set(k, b);
+      }
+      b.update(t, b.x + 0.5, b.y + 0.5, w.height[b.y * w.size + b.x]);
+    }
+    for (const [k, b] of this.bugs) if (!seen.has(k)) { this.scene.remove(b.root); this.bugs.delete(k); }
+  }
+
   render({ players = [], marker = null, focus, t, dt, now }) {
     if (!this.world) return;
     this.adapt(dt);
+    this.syncBugs(t);
     // Camera follows the focus point.
     this.yaw += (this.yawTarget - this.yaw) * Math.min(1, dt * 8);
     const k = Math.min(1, dt * 5);

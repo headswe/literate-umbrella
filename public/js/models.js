@@ -1,7 +1,7 @@
 // Voxel models for everything that stands on the island, drawn into shared instanced meshes.
 import * as THREE from 'three';
 import { growth } from './sim.js';
-import { VILLAGERS } from './data.js';
+import { VILLAGERS, NATURE } from './data.js';
 
 // A set of instanced meshes, one per material. Used for the world and for catalog pictures.
 export class PartSet {
@@ -130,10 +130,32 @@ export function drawNature(ps, k, o, x, y, z, now, dx = 0) {
         p('solid', k, x + 0.7 - i * 0.13, y + 0.18 + i * 0.13, z, 0.12, 0.12, 0.03, '#7a4b2a');
       }
       break;
+    case 'carrot':
+      p('soil', k, x + 0.04, y + 0.04, z, 0.92, 0.92, 0.05);
+      for (const [cx, cy] of [[0.22, 0.26], [0.6, 0.3], [0.38, 0.62], [0.68, 0.66]]) {
+        p('solid', k, x + cx, y + cy, z + 0.03, 0.12, 0.12, 0.08, '#ff8a3d');
+        p('solid', k, x + cx + 0.02, y + cy + 0.02, z + 0.11, 0.08, 0.08, 0.2, '#4fae4a');
+        p('solid', k, x + cx - 0.03, y + cy + 0.03, z + 0.24, 0.14, 0.06, 0.06, '#63c759');
+      }
+      break;
+    case 'berrybush': {
+      p('leaves', k, x + 0.14, y + 0.14, z, 0.72, 0.72, 0.5);
+      p('leaves', k, x + 0.26, y + 0.26, z + 0.5, 0.48, 0.48, 0.2);
+      const spots = [[0.12, 0.3, 0.25], [0.5, 0.12, 0.32], [0.82, 0.5, 0.2], [0.4, 0.82, 0.36], [0.3, 0.5, 0.68], [0.6, 0.62, 0.66]];
+      spots.slice(0, (o.berries ?? 3) * 2).forEach(([bx2, by2, bz]) => p('solid', k, x + bx2 - 0.05, y + by2 - 0.05, z + bz, 0.1, 0.1, 0.1, '#4a5bd6'));
+      break;
+    }
     case 'sapling': {
       p('soil', k, x + 0.04, y + 0.04, z, 0.92, 0.92, 0.05);
       const g = growth(o, now);
-      if (g < 0.3) {
+      if (NATURE[o.grows]?.crop) {
+        // Garden plants: a sprout that grows taller and leafier.
+        const h = 0.08 + g * 0.3;
+        for (const [cx, cy] of o.grows === 'carrot' ? [[0.22, 0.26], [0.6, 0.3], [0.38, 0.62], [0.68, 0.66]] : [[0.45, 0.45]]) {
+          p('solid', k, x + cx + 0.02, y + cy + 0.02, z + 0.05, 0.06, 0.06, h, '#4fae4a');
+          p('solid', k, x + cx - 0.04, y + cy, z + 0.05 + h, 0.18 * (0.5 + g), 0.1, 0.05, '#63c759');
+        }
+      } else if (g < 0.3) {
         const h = 0.12 + g * 0.6;
         p('solid', k, x + 0.47, y + 0.47, z + 0.05, 0.06, 0.06, h, '#4fae4a');
         p('solid', k, x + 0.33, y + 0.45, z + 0.05 + h, 0.14, 0.1, 0.05, '#63c759');
@@ -325,6 +347,20 @@ export function drawBuild(ps, k, o, x, y, z, now, nb) {
         p('solid', k, x + 1.42, y + 2.05, z + 0.5, 0.42, 0.04, 0.26, '#ffffff');
         p('solid', k, x + 1.56, y + 2.04, z + 0.56, 0.14, 0.04, 0.14, '#ff6fa8');
       }
+      break;
+    }
+    case 'museum': {
+      ps.clearGroup();
+      // Stone steps, white columns and a pointed roof, with a little butterfly sign.
+      p('cobble', k, x + 0.02, y + 0.02, z, 1.96, 1.96, 0.16);
+      p('cobble', k, x + 0.12, y + 0.12, z + 0.16, 1.76, 1.76, 0.12);
+      p('solid', k, x + 0.25, y + 0.2, z + 0.28, 1.5, 1.3, 1.1, '#f4efe4');
+      for (const cx of [0.2, 0.62, 1.2, 1.62]) p('solid', k, x + cx, y + 1.55, z + 0.28, 0.18, 0.18, 1.1, '#ffffff');
+      p('planks', k, x + 0.8, y + 1.48, z + 0.28, 0.4, 0.04, 0.72);
+      p('solid', k, x + 0.1, y + 0.1, z + 1.38, 1.8, 1.8, 0.14, '#e8e1d0');
+      for (let i = 0; i < 4; i++) p('solid', k, x + 0.2 + i * 0.2, y + 0.1, z + 1.52 + i * 0.16, 1.6 - i * 0.4, 1.8, 0.16, i % 2 ? '#c9d6e8' : '#b4c4dc');
+      p('solid', k, x + 0.82, y + 1.92, z + 1.42, 0.36, 0.04, 0.12, '#ff7eb6');
+      p('solid', k, x + 0.94, y + 1.93, z + 1.4, 0.12, 0.04, 0.16, '#2b2646');
       break;
     }
     case 'tent': {

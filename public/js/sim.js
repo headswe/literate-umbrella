@@ -1,6 +1,6 @@
 // Game rules. The sim owns the world and turns player actions into patches.
 // In single player it runs in the browser; the LAN server will run the same code.
-import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE } from './data.js';
+import { NATURE, ITEMS, STARTER_KIT, ALWAYS_TOOLS, MAX_HEIGHT, RECIPES, CATCH, BUGS, COLLECTION, CROP_MS, GROW_MS, BUILDS, VILLAGERS, T, WORLD_SIZE, OLD_WORLD_SIZE } from './data.js';
 import { generateWorld, key, mulberry32 } from './worldgen.js';
 
 export function newWorldSave(name, seed) {
@@ -66,8 +66,8 @@ export function loadWorld(save) {
 }
 
 export function toSave(world) {
-  const { id, name, seed, size, created, version, players, objects, villagers, tiles } = world;
-  return { id, name, seed, size, created, version, players, objects, villagers, tiles, saved: Date.now() };
+  const { id, name, seed, size, created, version, players, objects, villagers, tiles, museum } = world;
+  return { id, name, seed, size, created, version, players, objects, villagers, tiles, museum, saved: Date.now() };
 }
 
 // Make sure a player has a bag. New players get the starter kit.
@@ -127,18 +127,23 @@ export function refresh(o, now) {
     o.apples = NATURE.fruittree.apples;
     delete o.appleRest;
   }
+  if (o && o.type === 'berrybush' && o.berryRest && o.berryRest <= now) {
+    o.berries = NATURE.berrybush.berries;
+    delete o.berryRest;
+  }
   return o;
 }
 
-// How grown a sapling is, 0..1.
+// How grown a sapling is, 0..1. Garden plants are quicker than trees.
 export function growth(o, now) {
-  return Math.max(0, Math.min(1, (now - o.t0) / GROW_MS));
+  return Math.max(0, Math.min(1, (now - o.t0) / (NATURE[o.grows]?.crop ? CROP_MS : GROW_MS)));
 }
 
 // Which item a tap on this object should use, if the player has it.
 export function toolFor(o, selected) {
   if (!o) return null;
   if (o.type === 'fruittree') return selected === 'axe' ? 'axe' : 'hand';
+  if (o.type === 'bug') return 'net';
   return NATURE[o.type]?.tool || null;
 }
 
@@ -166,6 +171,7 @@ export class Sim {
     if (a.type === 'cook') return this.cook(a, pl);
     if (a.type === 'eat') return this.eat(a, pl);
     if (a.type === 'treat') return this.treat(a, pl, now);
+    if (a.type === 'donate') return this.donate(a, pl);
     if (a.type !== 'use') return [];
     const item = a.item || 'hand';
     if (item !== 'hand' && !(pl.inv[item] > 0)) return [];
@@ -180,6 +186,20 @@ export class Sim {
         put(out, w, { k: 'obj', key: k, v: null });
         this.give(out, a.by, def.gives, 1);
         fx('gain', { item: def.gives, n: 1 });
+      } else if (o && o.type === 'carrot') {
+        // Pull the carrots up; the soil stays for planting again, sometimes with a new seed.
+        put(out, w, { k: 'obj', key: k, v: { type: 'soil' } });
+        this.give(out, a.by, 'carrot', 2);
+        fx('gain', { item: 'carrot', n: 2 });
+        if (this.rand() < 0.6) { this.give(out, a.by, 'seed_carrot', 1); fx('gain', { item: 'seed_carrot', n: 1, delay: 350 }); }
+      } else if (o && o.type === 'berrybush') {
+        if (!o.berries) fx('noberries');
+        else {
+          const berries = o.berries - 1;
+          put(out, w, { k: 'obj', key: k, v: { ...o, berries, ...(berries ? {} : { berryRest: now + def.berryRest }) } });
+          this.give(out, a.by, 'berry', 1);
+          fx('gain', { item: 'berry', n: 1 });
+        }
       } else if (o && o.type === 'fruittree') {
         if (!o.apples) fx('noapples');
         else {
@@ -222,6 +242,11 @@ export class Sim {
       for (const [id, p] of CATCH) { if (r < p) { got = id; break; } r -= p; }
       this.give(out, a.by, got, 1);
       fx('fish', { item: got, n: 1, delay: 1500 + Math.floor(this.rand() * 1200) });
+    } else if (item === 'net') {
+      if (!o || o.type !== 'bug') { fx('nope'); return out; }
+      put(out, w, { k: 'obj', key: k, v: null });
+      this.give(out, a.by, o.kind, 1);
+      fx('caught', { item: o.kind, n: 1 });
     } else if (item === 'shovel') {
       this.dig(out, a, o, fx);
     } else if (item === 'dirt') {
@@ -238,12 +263,18 @@ export class Sim {
     return out;
   }
 
+  pickBug() {
+    let r = this.rand();
+    for (const [id, p] of BUGS) { if (r < p) return id; r -= p; }
+    return BUGS[0][0];
+  }
+
   // Spade: dig up treasure, turn grass into a dirt road, or dig a road down (a pond at the bottom).
   dig(out, a, o, fx) {
     const w = this.world, k = key(a.x, a.y), t = tileAt(w, a.x, a.y);
     if (o && o.type === 'buried') {
       put(out, w, { k: 'obj', key: k, v: null });
-      const loot = ['shell', 'seed_fruit', 'flower', 'seed_pine'][Math.floor(this.rand() * 4)];
+      const loot = ['shell', 'seed_fruit', 'seed_carrot', 'seed_berry', 'seed_pine'][Math.floor(this.rand() * 5)];
       this.give(out, a.by, 'star', 2);
       this.give(out, a.by, loot, 1);
       fx('treasure', { item: 'star', n: 2, loot });
@@ -378,6 +409,20 @@ export class Sim {
     return out;
   }
 
+  // The museum keeps one of each fish and little animal, with the name of who found it.
+  donate(a, pl) {
+    const out = [], w = this.world;
+    const o = w.objects[key(a.x, a.y)];
+    if (!o || o.type !== 'build' || o.id !== 'museum' || !COLLECTION.includes(a.item)) return out;
+    w.museum = w.museum || {};
+    if (w.museum[a.item] || !(pl.inv[a.item] > 0)) return out;
+    this.give(out, a.by, a.item, -1);
+    this.give(out, a.by, 'star', 1);
+    put(out, w, { k: 'museum', item: a.item, who: pl.name || '' });
+    put(out, w, { k: 'fx', fx: 'donated', x: a.x, y: a.y, by: a.by, item: a.item });
+    return out;
+  }
+
   // Give a friend some food just because. They love it.
   treat(a, pl, now) {
     const out = [];
@@ -470,9 +515,16 @@ export class Sim {
       this.nextGrow = now + 1000;
       for (const k in w.objects) {
         const o = w.objects[k];
+        if (o.type === 'bug' && now - o.t0 > 120000) {
+          // Little animals don't stay forever; new ones come instead.
+          put(out, w, { k: 'obj', key: k, v: null });
+          continue;
+        }
         if (o.type === 'sapling' && growth(o, now) >= 1) {
           const v = { type: o.grows, hp: NATURE[o.grows].hp };
           if (o.grows === 'fruittree') v.apples = NATURE.fruittree.apples;
+          if (o.grows === 'berrybush') v.berries = NATURE.berrybush.berries;
+          if (NATURE[o.grows].crop) delete v.hp;
           const [x, y] = k.split(',').map(Number);
           put(out, w, { k: 'obj', key: k, v });
           put(out, w, { k: 'fx', fx: 'grown', x, y, obj: o.grows });
@@ -481,16 +533,17 @@ export class Sim {
     }
     if (now >= this.nextSpawn) {
       this.nextSpawn = now + 6000;
-      let flowers = 0, shells = 0, rocks = 0, buried = 0;
+      let flowers = 0, shells = 0, rocks = 0, buried = 0, bugs = 0;
       for (const k in w.objects) {
         const t = w.objects[k].type;
         if (t === 'flower') flowers++;
         else if (t === 'shell') shells++;
         else if (t === 'rock') rocks++;
         else if (t === 'buried') buried++;
+        else if (t === 'bug') bugs++;
       }
       const room = (w.size / OLD_WORLD_SIZE) ** 2; // bigger islands get more of everything
-      const want = rocks < 14 * room ? 'rock' : buried < 3 ? 'buried' : flowers < 60 * room ? 'flower' : shells < 20 * room ? 'shell' : null;
+      const want = rocks < 14 * room ? 'rock' : buried < 3 ? 'buried' : bugs < 5 * room ? 'bug' : flowers < 60 * room ? 'flower' : shells < 20 * room ? 'shell' : null;
       for (let tries = 0; want && tries < 30; tries++) {
         const x = 1 + Math.floor(this.rand() * (w.size - 2));
         const y = 1 + Math.floor(this.rand() * (w.size - 2));
@@ -498,7 +551,8 @@ export class Sim {
         const k = key(x, y);
         if (w.objects[k] || this.nearPlayer(x, y)) continue;
         if (want === 'shell' ? t.t !== T.SAND : t.t !== T.GRASS) continue;
-        const v = want === 'flower' ? { type: 'flower', color: Math.floor(this.rand() * 4) } : want === 'rock' ? { type: 'rock', hp: 3 } : { type: want };
+        const v = want === 'flower' ? { type: 'flower', color: Math.floor(this.rand() * 4) } : want === 'rock' ? { type: 'rock', hp: 3 }
+          : want === 'bug' ? { type: 'bug', kind: this.pickBug(), t0: now } : { type: want };
         put(out, w, { k: 'obj', key: k, v });
         break;
       }
@@ -529,6 +583,8 @@ export function applyPatch(w, p) {
     w.terrain[y * w.size + x] = p.t;
     w.height[y * w.size + x] = p.h;
     (w.tiles || (w.tiles = {}))[p.key] = [p.t, p.h];
+  } else if (p.k === 'museum') {
+    (w.museum || (w.museum = {}))[p.item] = p.who || '🙂';
   } else if (p.k === 'vil') {
     (w.villagers || (w.villagers = {}))[p.id] = p.v;
   } else if (p.k === 'inv') {
