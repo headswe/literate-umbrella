@@ -40,6 +40,8 @@ const PALETTE = {
   frog: { body: '#69c35a', dark: '#4f9e43', accent: '#e6f5a6', foot: '#4f9e43' },
   fox: { body: '#e8742f', dark: '#3a2a22', accent: '#fff4e6', foot: '#3a2a22' },
   panda: { body: '#f7f7f2', dark: '#2b2b33', accent: '#2b2b33', foot: '#2b2b33' },
+  bear: { body: '#a8714a', dark: '#7a4f2c', accent: '#e8c9a0', foot: '#7a4f2c' },
+  pig: { body: '#ffb8c8', dark: '#f08da6', accent: '#ff9cb8', foot: '#e07b95' },
   robot: { body: '#c9d3df', dark: '#7d8aa0', accent: '#4fd2ff', foot: '#5b667a' },
 };
 
@@ -109,7 +111,7 @@ export function makeCharacter(kind) {
     box(head, 0.06, 0.03, 0.02, '#ff9cb8', -0.13, ey - 0.07, ez);
     box(head, 0.06, 0.03, 0.02, '#ff9cb8', 0.13, ey - 0.07, ez);
     // Snout.
-    const snout = kind === 'dog' || kind === 'fox' ? p.accent : kind === 'unicorn' ? p.dark : null;
+    const snout = kind === 'dog' || kind === 'fox' || kind === 'bear' ? p.accent : kind === 'unicorn' ? p.dark : kind === 'pig' ? p.dark : null;
     if (snout) box(head, 0.16, 0.1, 0.08, snout, 0, -0.08, ez + 0.03);
     box(head, 0.05, 0.035, 0.02, '#3a2a2a', 0, -0.05, ez + (snout ? 0.075 : 0.004));
   }
@@ -128,6 +130,12 @@ export function makeCharacter(kind) {
     box(head, 0.08, 0.28, 0.05, p.body, 0.08, hs / 2 + 0.14, -0.04);
     box(head, 0.04, 0.2, 0.01, p.accent, -0.08, hs / 2 + 0.14, -0.01);
     box(head, 0.04, 0.2, 0.01, p.accent, 0.08, hs / 2 + 0.14, -0.01);
+  } else if (kind === 'bear') {
+    box(head, 0.1, 0.1, 0.06, p.body, -0.13, hs / 2 + 0.03, -0.04);
+    box(head, 0.1, 0.1, 0.06, p.body, 0.13, hs / 2 + 0.03, -0.04);
+  } else if (kind === 'pig') {
+    box(head, 0.09, 0.07, 0.06, p.dark, -0.12, hs / 2 + 0.02, 0.02).rotation.x = 0.4;
+    box(head, 0.09, 0.07, 0.06, p.dark, 0.12, hs / 2 + 0.02, 0.02).rotation.x = 0.4;
   } else if (kind === 'panda') {
     box(head, 0.09, 0.09, 0.06, p.dark, -0.13, hs / 2 + 0.03, -0.04);
     box(head, 0.09, 0.09, 0.06, p.dark, 0.13, hs / 2 + 0.03, -0.04);
@@ -159,7 +167,9 @@ export function makeCharacter(kind) {
     box(tail, 0.15, 0.15, 0.08, p.accent, 0, 0.02, -0.3);
   } else if (kind === 'dog') {
     box(tail, 0.06, 0.06, 0.18, p.body, 0, 0.06, -0.07).rotation.x = -0.6;
-  } else if (kind === 'bunny' || kind === 'panda') {
+  } else if (kind === 'pig') {
+    box(tail, 0.05, 0.05, 0.1, p.dark, 0, 0.04, -0.03).rotation.z = 0.8;
+  } else if (kind === 'bunny' || kind === 'panda' || kind === 'bear') {
     box(tail, 0.12, 0.12, 0.08, kind === 'panda' ? p.dark : '#ffffff', 0, 0, -0.02);
   }
 

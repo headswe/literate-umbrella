@@ -1,6 +1,7 @@
 // Boot, game loop, input and HUD.
-import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS } from './data.js';
-import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford } from './sim.js';
+import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS } from './data.js';
+import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, doorOf } from './sim.js';
+import { speak, stopSpeaking } from './speech.js';
 import { Renderer3D } from './render3d.js';
 import { findPath } from './path.js';
 import { sfx, unlockAudio, setMuted, isMuted } from './audio.js';
@@ -130,6 +131,9 @@ function startGame(save) {
   $('hint').hidden = !hintShown;
   $('bagSheet').hidden = true;
   $('buildSheet').hidden = true;
+  $('talkSheet').hidden = true;
+  ensureThumbs();
+  vilPos.clear();
   renderInventory();
   lastSave = performance.now();
 }
@@ -153,6 +157,8 @@ $('homeBtn').onclick = goHome;
 $('muteBtn').onclick = () => {
   setMuted(!isMuted());
   $('muteBtn').textContent = isMuted() ? '🔇' : '🔊';
+  try { localStorage.setItem('myson.muted', isMuted() ? '1' : '0'); } catch { /* ignore */ }
+  if (isMuted()) stopSpeaking();
 };
 $('zoomIn').onclick = () => renderer.zoomBy(1.2);
 $('zoomOut').onclick = () => renderer.zoomBy(1 / 1.2);
@@ -247,10 +253,13 @@ function costText(id) {
   return `${BUILDS[id].name} kostar ${need}`;
 }
 
+function ensureThumbs() {
+  if (Object.keys(thumbs).length) return;
+  try { thumbs = renderer.thumbnails(Object.keys(BUILDS).filter((id) => BUILDS[id].cat !== 'hidden'), BUILDS); } catch { thumbs = {}; }
+}
+
 function openBuild() {
-  if (!Object.keys(thumbs).length) {
-    try { thumbs = renderer.thumbnails(Object.keys(BUILDS), BUILDS); } catch { thumbs = {}; }
-  }
+  ensureThumbs();
   renderBuild();
   $('buildSheet').hidden = false;
   sfx.pop();
@@ -380,6 +389,35 @@ function handle(patches) {
         renderer.burst(p.x, p.y, z - 0.5, '#ffffff', 8);
         if (mine) sfx.pop();
         break;
+      case 'wishdone': {
+        const info = VIL[p.vid];
+        const vp = vilPos.get(p.vid);
+        if (vp) { vp.swing = Date.now() + 400; renderer.burst(vp.x - 0.5, vp.y - 0.5, vp.z, '#ff7eb6', 18); renderer.floatText(vp.x - 0.5, vp.y - 0.5, vp.z, '⭐', '+' + p.stars); }
+        sfx.grow();
+        if (mine) {
+          const msg = `Tack så jättemycket! Här får du ${p.stars} ${p.stars > 1 ? 'stjärnor' : 'stjärna'} och ${amount(p.gift, 2)}!`;
+          if (talking === p.vid) { $('talkText').textContent = msg; $('talkGive').hidden = true; $('talkHearts').textContent = '❤️'.repeat(Math.min(10, world.villagers[p.vid].hearts)); speak(msg); }
+          else toast(`${info.name} blev jätteglad! ⭐`);
+        }
+        break;
+      }
+      case 'notenough':
+        if (mine) { sfx.nope(); toast(`Du behöver ${amount(p.item, p.n)}`); }
+        break;
+      case 'movein': {
+        const info = VIL[p.vid];
+        renderer.burst(p.x, p.y, z + 1, '#ffd23f', 30);
+        sfx.grow();
+        toast(`${info.name} har flyttat in! 🏠`);
+        speak(`${info.name} har flyttat in!`);
+        break;
+      }
+      case 'someonelives':
+        if (mine) { sfx.nope(); toast(`${VIL[p.vid].name} bor här!`); }
+        break;
+      case 'noroom':
+        if (mine) { sfx.nope(); toast('Det behövs plats: 2 × 2 platt mark'); }
+        break;
       case 'cantafford':
         if (mine) { sfx.nope(); toast(costText(p.id)); }
         break;
@@ -406,7 +444,19 @@ function face(dx, dy) {
   if (dx || dy) me.angle = Math.atan2(dx, dy);
 }
 
+function goTalk(vid) {
+  const v = world.villagers[vid];
+  const vx = Math.floor(v.tx), vy = Math.floor(v.ty);
+  goAct(vx, vy, { type: 'talk', vid });
+}
+
 function doAct(tx, ty, act) {
+  if (act.type === 'talk') {
+    const v = world.villagers[act.vid];
+    face(v.x - me.x, v.y - me.y);
+    openTalk(act.vid);
+    return;
+  }
   const t = performance.now();
   if (t < me.nextAct) return;
   me.nextAct = t + ACT_COOLDOWN;
@@ -427,9 +477,12 @@ const goUse = (x, y, item) => goAct(x, y, { type: 'use', item });
 
 function tapAt(sx, sy) {
   if (!playing) return;
+  const actor = renderer.pickActor(sx, sy);
+  if (actor && actor.startsWith('v:')) return goTalk(actor.slice(2));
   const hit = renderer.pick(sx, sy);
   if (!hit) return;
-  const { x, y, obj } = hit;
+  let { x, y, obj } = hit;
+  if (obj && obj.type === 'part') { [x, y] = obj.of.split(',').map(Number); obj = world.objects[obj.of]; }
   const sel = me.sel;
   const kind = ITEMS[sel]?.kind;
 
@@ -464,6 +517,81 @@ function tapAt(sx, sy) {
   if (!path) { sfx.nope(); return; }
   me.path = path; me.action = null; marker = { x, y };
 }
+
+// ---------------------------------------------------------------- villagers
+const vilPos = new Map();
+const VIL = Object.fromEntries(VILLAGERS.map((v) => [v.id, v]));
+const VIL_SPEED = 1.6;
+
+function wishBubble(v) {
+  const w = v.wish;
+  if (!w) return '<span class="think">💭</span>';
+  if (w.kind === 'give') return `${ITEMS[w.item].icon}<b>×${w.n}</b>`;
+  return thumbs[w.id] ? `<img src="${thumbs[w.id]}" alt="">` : '🔨';
+}
+
+// Smoothly walk each villager toward the tile the rules picked for them.
+function villagerActors(dt) {
+  const out = [];
+  for (const v of Object.values(world.villagers || {})) {
+    let p = vilPos.get(v.id);
+    if (!p) { p = { x: v.x, y: v.y, angle: 0 }; vilPos.set(v.id, p); }
+    const dx = v.tx - p.x, dy = v.ty - p.y, d = Math.hypot(dx, dy);
+    const step = VIL_SPEED * dt;
+    let moving = false;
+    if (d > 3) { p.x = v.tx; p.y = v.ty; }
+    else if (d > 0.01) { const k = Math.min(1, step / d); p.x += dx * k; p.y += dy * k; p.angle = Math.atan2(dx, dy); moving = true; }
+    p.z = (p.z ?? heightAt(world, Math.floor(p.x), Math.floor(p.y)));
+    p.z += (heightAt(world, Math.floor(p.x), Math.floor(p.y)) - p.z) * Math.min(1, dt * 12);
+    out.push({ id: 'v:' + v.id, kind: VIL[v.id].kind, x: p.x, y: p.y, z: p.z, angle: p.angle, moving, name: VIL[v.id].name, bubble: wishBubble(v), swing: p.swing });
+  }
+  return out;
+}
+
+const NUM = ['', '', 'två', 'tre', 'fyra'];
+function amount(item, n) { return n === 1 ? ITEMS[item].one : `${NUM[n] || n} ${ITEMS[item].plural}`; }
+
+function wishText(v) {
+  const w = v.wish;
+  if (!w) return 'Jag funderar på vad jag önskar mig… Kom tillbaka snart!';
+  if (w.kind === 'give') return `Kan du ge mig ${amount(w.item, w.n)}? Det skulle göra mig så glad!`;
+  const b = BUILDS[w.id];
+  return `Jag önskar mig ${b.art || 'en'} ${b.name.toLowerCase()} nära mitt hus. Kan du bygga det?`;
+}
+
+const HELLO = ['Hej {namn}!', 'Hejsan {namn}!', 'Åh, hej {namn}!', 'Vad roligt att se dig, {namn}!'];
+let talking = null;
+
+function openTalk(vid) {
+  const v = world.villagers[vid], info = VIL[vid];
+  talking = vid;
+  const hello = HELLO[Math.floor(Math.random() * HELLO.length)].replace('{namn}', me.name || 'kompis');
+  const text = `${hello} ${wishText(v)}`;
+  $('talkFace').textContent = (AVATARS.find((a) => a.id === info.kind) || {}).icon || { bear: '🐻', pig: '🐷' }[info.kind] || '🙂';
+  $('talkName').textContent = info.name;
+  $('talkHearts').textContent = '❤️'.repeat(Math.min(10, v.hearts)) || '🤍';
+  $('talkText').textContent = text;
+  const give = $('talkGive');
+  if (v.wish?.kind === 'give') {
+    const has = (inv()[v.wish.item] || 0) >= v.wish.n;
+    give.hidden = false;
+    give.disabled = !has;
+    give.textContent = has ? `Ge ${v.wish.n} ${ITEMS[v.wish.item].icon}` : `Du har ${inv()[v.wish.item] || 0} av ${v.wish.n} ${ITEMS[v.wish.item].icon}`;
+  } else give.hidden = true;
+  $('talkSheet').hidden = false;
+  speak(text);
+  const p = vilPos.get(vid);
+  if (p) { p.angle = Math.atan2(me.x - p.x, me.y - p.y); p.swing = Date.now() + 250; }
+}
+
+function closeTalk() { $('talkSheet').hidden = true; talking = null; stopSpeaking(); }
+$('talkBye').onclick = closeTalk;
+$('talkSay').onclick = () => speak($('talkText').textContent);
+$('talkSheet').addEventListener('pointerdown', (e) => { if (e.target === $('talkSheet')) closeTalk(); });
+$('talkGive').onclick = () => {
+  if (!talking) return;
+  handle(sim.act({ type: 'give', vid: talking, by: me.id }));
+};
 
 // ---------------------------------------------------------------- input
 const pointers = new Map();
@@ -605,7 +733,12 @@ function frame(t) {
     } else if (me.path) {
       me.path = null;
       marker = null;
-      if (me.action) { const a = me.action; me.action = null; doAct(a.x, a.y, a.act); }
+      if (me.action) {
+        const a = me.action; me.action = null;
+        // Villagers wander, so aim at where they are now.
+        if (a.act.type === 'talk') { const v = world.villagers[a.act.vid]; if (Math.hypot(v.x - me.x, v.y - me.y) > 2.2) goTalk(a.act.vid); else doAct(0, 0, a.act); }
+        else doAct(a.x, a.y, a.act);
+      }
     }
     if (me.moving && (stepTimer -= dt) < 0) { stepTimer = 0.28; sfx.step(); }
 
@@ -616,7 +749,7 @@ function frame(t) {
     pl.x = me.x; pl.y = me.y;
     handle(sim.tick(now));
     if (dirty && t - lastSave > 4000) { save(); lastSave = t; }
-    renderer.render({ players: [me], marker, focus: me, t: t / 1000, dt, now });
+    renderer.render({ players: [me, ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
   } else if (world) {
     renderer.yawTarget += dt * 0.12;
     renderer.render({ focus: { x: world.spawn.x, y: world.spawn.y, z: 1 }, t: t / 1000, dt, now });
@@ -624,6 +757,9 @@ function frame(t) {
   requestAnimationFrame(frame);
 }
 
+try {
+  if (localStorage.getItem('myson.muted') === '1') { setMuted(true); $('muteBtn').textContent = '🔇'; }
+} catch { /* ignore */ }
 showDemo();
 renderTitle();
 requestAnimationFrame(frame);

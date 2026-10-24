@@ -1,6 +1,6 @@
 // Game rules. The sim owns the world and turns player actions into patches.
 // In single player it runs in the browser; the LAN server will run the same code.
-import { NATURE, ITEMS, STARTER_KIT, GROW_MS, BUILDS, T } from './data.js';
+import { NATURE, ITEMS, STARTER_KIT, GROW_MS, BUILDS, VILLAGERS, T } from './data.js';
 import { generateWorld, key, mulberry32 } from './worldgen.js';
 
 export function newWorldSave(name, seed) {
@@ -13,7 +13,30 @@ export function newWorldSave(name, seed) {
     version: 2,
     players: {},
     objects: gen.objects,
+    villagers: {},
   };
+}
+
+// The first friend lives in a tent next to where everyone starts.
+function settleFirstVillager(w) {
+  if (w.villagers && Object.keys(w.villagers).length) return;
+  w.villagers = {};
+  const sx = Math.floor(w.spawn.x) + 2, sy = Math.floor(w.spawn.y) - 2;
+  const k = key(sx, sy);
+  w.objects[k] = { type: 'build', id: 'tent', rot: 0, owner: 'stjarna' };
+  w.villagers.stjarna = newVillager('stjarna', k, sx + 0.5, sy + 1.5);
+}
+
+function newVillager(id, home, x, y) {
+  return { id, home, x, y, tx: x, ty: y, hearts: 0, wish: null, nextWish: 0, nextStep: 0 };
+}
+
+// Where a villager's front door is, in tile coordinates.
+export function doorOf(w, home) {
+  const [x, y] = home.split(',').map(Number);
+  const o = w.objects[home];
+  const size = o ? BUILDS[o.id]?.size || 1 : 1;
+  return { x: x + size / 2, y: y + size + 0.5 };
 }
 
 // A playable world: the save plus terrain rebuilt from the seed.
@@ -30,12 +53,13 @@ export function loadWorld(save) {
     }
     w.version = 2;
   }
+  settleFirstVillager(w);
   return w;
 }
 
 export function toSave(world) {
-  const { id, name, seed, created, version, players, objects } = world;
-  return { id, name, seed, created, version, players, objects, saved: Date.now() };
+  const { id, name, seed, created, version, players, objects, villagers } = world;
+  return { id, name, seed, created, version, players, objects, villagers, saved: Date.now() };
 }
 
 // Make sure a player has a bag. New players get the starter kit.
@@ -68,6 +92,7 @@ export function heightAt(world, x, y) {
 
 export function blocks(o) {
   if (!o) return false;
+  if (o.type === 'part') return true;
   if (o.type === 'build') { const b = BUILDS[o.id]; return !(b.flat || b.stack); }
   return !!NATURE[o.type]?.blocks;
 }
@@ -127,8 +152,9 @@ export class Sim {
     const w = this.world;
     const pl = w.players[a.by];
     if (!pl) return [];
-    if (a.type === 'build') return this.build(a, pl);
+    if (a.type === 'build') return this.build(a, pl, now);
     if (a.type === 'pickup') return this.pickup(a);
+    if (a.type === 'give') return this.giveWish(a, pl, now);
     if (a.type !== 'use') return [];
     const item = a.item || 'hand';
     if (item !== 'hand' && !(pl.inv[item] > 0)) return [];
@@ -190,7 +216,7 @@ export class Sim {
     return out;
   }
 
-  build(a, pl) {
+  build(a, pl, now = Date.now()) {
     const w = this.world, out = [];
     const def = BUILDS[a.id];
     const k = key(a.x, a.y);
@@ -200,36 +226,149 @@ export class Sim {
     if (!def || !t || t.t === T.WATER) { fx('nope'); return out; }
     if (!canAfford(pl.inv, def.cost)) { fx('cantafford', { id: a.id }); return out; }
     let v;
+    const size = def.size || 1;
+    const cells = [];
+    for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) cells.push([a.x + dx, a.y + dy]);
+    if (size > 1) {
+      // Big things need flat, empty land under every tile.
+      const ok = cells.every(([cx, cy]) => {
+        const ct = tileAt(w, cx, cy), co = w.objects[key(cx, cy)];
+        return ct && ct.t !== T.WATER && ct.h === t.h && (!co || co.type === 'flower' || co.type === 'shell');
+      });
+      if (!ok) { fx('noroom'); return out; }
+      for (const [cx, cy] of cells.slice(1)) {
+        const co = w.objects[key(cx, cy)];
+        if (co) this.give(out, a.by, NATURE[co.type].gives, 1);
+        put(out, w, { k: 'obj', key: key(cx, cy), v: { type: 'part', of: k } });
+      }
+    }
     if (o && o.type === 'build' && o.id === a.id && def.stack) {
       if ((o.h || 1) >= def.stack) { fx('nope'); return out; }
       v = { ...o, h: (o.h || 1) + 1 };
     } else if (!o || o.type === 'flower' || o.type === 'shell') {
       if (o) { this.give(out, a.by, NATURE[o.type].gives, 1); }
-      v = { type: 'build', id: a.id, rot: a.rot || 0, ...(def.stack ? { h: 1 } : {}), by: a.by };
+      v = { type: 'build', id: a.id, rot: size > 1 ? 0 : a.rot || 0, ...(def.stack ? { h: 1 } : {}), by: a.by, t: now };
     } else { fx('occupied'); return out; }
     for (const [item, n] of Object.entries(def.cost)) this.give(out, a.by, item, -n);
     put(out, w, { k: 'obj', key: k, v });
     fx('built', { id: a.id });
+    // Did someone wish for exactly this near their home?
+    for (const vil of Object.values(w.villagers || {})) {
+      if (vil.wish?.kind !== 'build' || vil.wish.id !== a.id) continue;
+      const d = doorOf(w, vil.home);
+      if (Math.hypot(a.x + 0.5 - d.x, a.y + 0.5 - d.y) <= 6) { this.fulfil(out, vil, a.by, now); break; }
+    }
     return out;
   }
 
   // Pick a built thing up again; whoever picks it up gets the materials back.
   pickup(a) {
     const w = this.world, out = [];
-    const k = key(a.x, a.y);
-    const o = w.objects[k];
+    let k = key(a.x, a.y);
+    let o = w.objects[k];
+    if (o && o.type === 'part') { k = o.of; o = w.objects[k]; }
     if (!o || o.type !== 'build') { put(out, w, { k: 'fx', fx: 'nope', x: a.x, y: a.y, by: a.by }); return out; }
+    if (o.owner) { put(out, w, { k: 'fx', fx: 'someonelives', x: a.x, y: a.y, by: a.by, vid: o.owner }); return out; }
     const def = BUILDS[o.id];
+    if (def.size > 1) {
+      const [ax, ay] = k.split(',').map(Number);
+      for (let dy = 0; dy < def.size; dy++) for (let dx = 0; dx < def.size; dx++) if (dx || dy) put(out, w, { k: 'obj', key: key(ax + dx, ay + dy), v: null });
+    }
     for (const [item, n] of Object.entries(def.cost)) this.give(out, a.by, item, n);
     put(out, w, { k: 'obj', key: k, v: (o.h || 1) > 1 ? { ...o, h: o.h - 1 } : null });
     put(out, w, { k: 'fx', fx: 'pickedup', x: a.x, y: a.y, by: a.by, id: o.id });
     return out;
   }
 
+  // Give a villager what they wished for.
+  giveWish(a, pl, now) {
+    const out = [];
+    const vil = this.world.villagers?.[a.vid];
+    const wish = vil?.wish;
+    if (!wish || wish.kind !== 'give') return out;
+    if ((pl.inv[wish.item] || 0) < wish.n) {
+      put(out, this.world, { k: 'fx', fx: 'notenough', vid: vil.id, by: a.by, item: wish.item, n: wish.n });
+      return out;
+    }
+    this.give(out, a.by, wish.item, -wish.n);
+    this.fulfil(out, vil, a.by, now);
+    return out;
+  }
+
+  fulfil(out, vil, by, now) {
+    const hearts = vil.hearts + 1;
+    const stars = hearts % 3 === 0 ? 2 : 1;
+    const info = VILLAGERS.find((v) => v.id === vil.id);
+    const gift = info.gives[Math.floor(this.rand() * info.gives.length)];
+    this.give(out, by, 'star', stars);
+    this.give(out, by, gift, 2);
+    put(out, this.world, { k: 'vil', id: vil.id, v: { ...vil, hearts, wish: null, nextWish: now + 20000 + this.rand() * 20000 } });
+    put(out, this.world, { k: 'fx', fx: 'wishdone', vid: vil.id, by, stars, gift });
+  }
+
+  newWish(vil) {
+    const info = VILLAGERS.find((v) => v.id === vil.id);
+    if (this.rand() < 0.45) {
+      const id = info.likes[Math.floor(this.rand() * info.likes.length)];
+      return { kind: 'build', id };
+    }
+    const items = ['wood', 'stone', 'fruit', 'flower', 'shell'];
+    const item = items[Math.floor(this.rand() * items.length)];
+    return { kind: 'give', item, n: 1 + Math.floor(this.rand() * 3) };
+  }
+
+  // Villagers stroll around their home, think up wishes, and new ones move into empty houses.
+  tickVillagers(now, out) {
+    const w = this.world;
+    w.villagers = w.villagers || {};
+    for (const vil of Object.values(w.villagers)) {
+      let v = null;
+      if (!vil.wish && now >= vil.nextWish) v = { ...vil, wish: this.newWish(vil) };
+      if (now >= vil.nextStep) {
+        const cur = v || vil;
+        const door = doorOf(w, vil.home);
+        const fx = Math.floor(cur.tx), fy = Math.floor(cur.ty);
+        const opts = [];
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = fx + dx, ny = fy + dy;
+          if (Math.hypot(nx + 0.5 - door.x, ny + 0.5 - door.y) > 4.5) continue;
+          if (canStep(w, fx, fy, nx, ny)) opts.push([nx, ny]);
+        }
+        const pause = this.rand() < 0.4 ? 1500 + this.rand() * 3500 : 0;
+        if (opts.length && !pause) {
+          const [nx, ny] = opts[Math.floor(this.rand() * opts.length)];
+          v = { ...cur, x: cur.tx, y: cur.ty, tx: nx + 0.5, ty: ny + 0.5, nextStep: now + 700 };
+        } else if (!isWalkable(w, fx, fy)) {
+          // Someone built on top of us: hop back to the door.
+          v = { ...cur, x: door.x, y: door.y, tx: door.x, ty: door.y, nextStep: now + 500 };
+        } else {
+          v = { ...cur, x: cur.tx, y: cur.ty, nextStep: now + 400 + pause };
+        }
+      }
+      if (v) put(out, w, { k: 'vil', id: vil.id, v });
+    }
+    // Empty houses get a new neighbour after a short while.
+    for (const [k, o] of Object.entries(w.objects)) {
+      if (o.type !== 'build' || o.id !== 'house' || o.owner || now - (o.t || 0) < 6000) continue;
+      const next = VILLAGERS.find((v) => !w.villagers[v.id]);
+      if (!next) break;
+      const door = doorOf(w, k);
+      put(out, w, { k: 'obj', key: k, v: { ...o, owner: next.id } });
+      put(out, w, { k: 'vil', id: next.id, v: newVillager(next.id, k, door.x, door.y) });
+      const [x, y] = k.split(',').map(Number);
+      put(out, w, { k: 'fx', fx: 'movein', vid: next.id, x: x + 1, y: y + 1 });
+      break;
+    }
+  }
+
   // Saplings grow up, new flowers bloom, shells wash ashore and new rocks appear.
   tick(now = Date.now()) {
     const w = this.world;
     const out = [];
+    if (now >= (this.nextVil || 0)) {
+      this.nextVil = now + 250;
+      this.tickVillagers(now, out);
+    }
     if (now >= this.nextGrow) {
       this.nextGrow = now + 1000;
       for (const k in w.objects) {
@@ -238,7 +377,8 @@ export class Sim {
           const v = { type: o.grows, hp: NATURE[o.grows].hp };
           if (o.grows === 'fruittree') v.apples = NATURE.fruittree.apples;
           const [x, y] = k.split(',').map(Number);
-          out.push({ k: 'obj', key: k, v }, { k: 'fx', fx: 'grown', x, y, obj: o.grows });
+          put(out, w, { k: 'obj', key: k, v });
+          put(out, w, { k: 'fx', fx: 'grown', x, y, obj: o.grows });
         }
       }
     }
@@ -260,11 +400,10 @@ export class Sim {
         if (w.objects[k] || this.nearPlayer(x, y)) continue;
         if (want === 'shell' ? t.t !== T.SAND : t.t !== T.GRASS) continue;
         const v = want === 'flower' ? { type: 'flower', color: Math.floor(this.rand() * 4) } : want === 'rock' ? { type: 'rock', hp: 3 } : { type: 'shell' };
-        out.push({ k: 'obj', key: k, v });
+        put(out, w, { k: 'obj', key: k, v });
         break;
       }
     }
-    for (const p of out) applyPatch(w, p);
     return out;
   }
 
@@ -286,6 +425,8 @@ export function applyPatch(w, p) {
   if (p.k === 'obj') {
     if (p.v) w.objects[p.key] = p.v;
     else delete w.objects[p.key];
+  } else if (p.k === 'vil') {
+    (w.villagers || (w.villagers = {}))[p.id] = p.v;
   } else if (p.k === 'inv') {
     const pl = w.players[p.pid] || (w.players[p.pid] = { inv: {} });
     if (p.n > 0) pl.inv[p.item] = p.n;

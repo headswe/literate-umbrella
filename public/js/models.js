@@ -1,6 +1,7 @@
 // Voxel models for everything that stands on the island, drawn into shared instanced meshes.
 import * as THREE from 'three';
 import { growth } from './sim.js';
+import { VILLAGERS } from './data.js';
 
 // A set of instanced meshes, one per material. Used for the world and for catalog pictures.
 export class PartSet {
@@ -141,6 +142,12 @@ export function drawNature(ps, k, o, x, y, z, now, dx = 0) {
       drawBuild(ps, k, o, x, y, z, now, null);
       break;
   }
+}
+
+function shadeHex(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (c) => Math.round(c * 0.85).toString(16).padStart(2, '0');
+  return '#' + f((n >> 16) & 255) + f((n >> 8) & 255) + f(n & 255);
 }
 
 const RAINBOW = ['#ff5d5d', '#ffa53f', '#ffe14d', '#6bd66b', '#4fb3ff', '#a77bff'];
@@ -289,6 +296,42 @@ export function drawBuild(ps, k, o, x, y, z, now, nb) {
       p('solid', k, x + 0.68, y + 0.42, z + 0.08, 0.2, 0.16, 0.4, '#e8473d');
       p('solid', k, x + 0.42, y + 0.12, z + 0.08, 0.16, 0.2, 0.4, '#e8473d');
       break;
+    case 'house': {
+      ps.clearGroup();
+      const roof = VILLAGERS.find((v) => v.id === o.owner)?.roof || '#c9b59a';
+      p('cobble', k, x + 0.05, y + 0.05, z, 1.9, 1.9, 0.18);
+      p('solid', k, x + 0.15, y + 0.15, z + 0.18, 1.7, 1.7, 1.15, '#fff3dc');
+      for (const cx of [0.15, 1.75]) for (const cy of [0.15, 1.75]) p('trunk', k, x + cx, y + cy, z + 0.18, 0.1, 0.1, 1.15);
+      p('planks', k, x + 0.78, y + 1.83, z + 0.18, 0.44, 0.05, 0.75);
+      p('solid', k, x + 1.1, y + 1.89, z + 0.5, 0.05, 0.03, 0.06, '#ffd23f');
+      p('glow', k, x + 0.3, y + 1.84, z + 0.6, 0.3, 0.04, 0.3, o.owner ? '#ffe8a3' : '#bfe3f0');
+      p('glow', k, x + 1.4, y + 1.84, z + 0.6, 0.3, 0.04, 0.3, o.owner ? '#ffe8a3' : '#bfe3f0');
+      p('glow', k, x + 1.84, y + 0.8, z + 0.6, 0.04, 0.4, 0.3, o.owner ? '#ffe8a3' : '#bfe3f0');
+      for (let i = 0; i < 5; i++) {
+        const inset = i * 0.2;
+        p('solid', k, x + inset, y + inset, z + 1.33 + i * 0.2, 2 - inset * 2, 2 - inset * 2, 0.2, i % 2 ? roof : shadeHex(roof));
+      }
+      p('cobble', k, x + 1.35, y + 0.35, z + 1.4, 0.25, 0.25, 0.85);
+      if (!o.owner) {
+        // A little "free house" sign by the door.
+        p('planks', k, x + 1.6, y + 2.05, z, 0.06, 0.06, 0.55);
+        p('solid', k, x + 1.42, y + 2.05, z + 0.5, 0.42, 0.04, 0.26, '#ffffff');
+        p('solid', k, x + 1.56, y + 2.04, z + 0.56, 0.14, 0.04, 0.14, '#ff6fa8');
+      }
+      break;
+    }
+    case 'tent': {
+      ps.clearGroup();
+      const cols = ['#ff7eb6', '#ffffff'];
+      for (let i = 0; i < 5; i++) {
+        const half = 0.46 - i * 0.09;
+        p('solid', k, x + 0.5 - half, y + 0.06, z + i * 0.2, half * 2, 0.88, 0.2, cols[i % 2]);
+      }
+      p('solid', k, x + 0.4, y + 0.92, z, 0.2, 0.03, 0.42, '#5b3a64');
+      p('trunk', k, x + 0.47, y + 0.96, z, 0.06, 0.06, 1.15);
+      p('solid', k, x + 0.53, y + 0.96, z + 0.95, 0.22, 0.02, 0.14, '#ffd23f');
+      break;
+    }
     case 'rainbow': {
       for (let b = 0; b < RAINBOW.length; b++) {
         const r = 0.5 - b * 0.06;

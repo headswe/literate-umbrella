@@ -113,6 +113,27 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 .bag-item .cnt { font: 700 13px var(--font-body); color: #6d6690; font-variant-numeric: tabular-nums; }
 .bag-item[aria-pressed="true"] { background: var(--sun); }
 .bag-item:disabled { cursor: default; }
+.bubble {
+  background: #fff; color: var(--ink); border-radius: 16px; padding: 4px 8px; font: 700 18px var(--font-display);
+  display: flex; align-items: center; gap: 2px; box-shadow: 0 3px 0 rgba(43,38,70,0.2);
+}
+.bubble::after {
+  content: ""; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; background: #fff;
+  transform: translateX(-50%) rotate(45deg); border-radius: 2px;
+}
+.bubble img { width: 34px; height: 34px; }
+.bubble b { font-size: 15px; }
+.bubble .think { font-size: 20px; }
+.talk-card { display: flex; flex-direction: column; gap: 12px; }
+.talk-head { display: flex; align-items: center; gap: 14px; }
+.talk-head > div:nth-child(2) { flex: 1; min-width: 0; }
+.talk-head h2 { font: 700 28px var(--font-display); margin: 0; }
+.talk-face { font-size: 54px; width: 76px; height: 76px; border-radius: 22px; background: #f1ebdc; display: grid; place-items: center; }
+.talk-hearts { font-size: 16px; letter-spacing: 1px; min-height: 20px; }
+.talk-text { font: 600 21px/1.35 var(--font-display); margin: 0; text-wrap: pretty; }
+.talk-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.talk-actions .big { flex: 1; min-width: 160px; font-size: 22px; padding: 14px; }
+.talk-actions .big:disabled { background: #b9b3c9; box-shadow: none; }
 .thumb { width: 64px; height: 64px; display: block; image-rendering: auto; }
 .slot .thumb { width: 46px; height: 46px; }
 .build-item .nm { text-align: center; line-height: 1.1; }
@@ -244,6 +265,20 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
         <button class="chip-btn" id="buildStop">✋ Sluta bygga</button>
       </div>
       <div id="buildList"></div>
+    </div>
+  </div>
+  <div class="bag-sheet" id="talkSheet" hidden>
+    <div class="bag-card talk-card" role="dialog" aria-labelledby="talkName">
+      <div class="talk-head">
+        <div class="talk-face" id="talkFace" aria-hidden="true">🦄</div>
+        <div><h2 id="talkName">Stjärna</h2><div class="talk-hearts" id="talkHearts"></div></div>
+        <button class="bag-close" id="talkSay" aria-label="Läs igen">🔊</button>
+      </div>
+      <p class="talk-text" id="talkText"></p>
+      <div class="talk-actions">
+        <button class="big" id="talkGive" hidden>Ge</button>
+        <button class="chip-btn" id="talkBye">Hej då 👋</button>
+      </div>
     </div>
   </div>
   <div class="bag-sheet" id="bagSheet" hidden>

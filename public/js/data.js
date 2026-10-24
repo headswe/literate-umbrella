@@ -20,12 +20,12 @@ export const ITEMS = {
   seed_tree: { icon: '🌰', name: 'Trädfrö', kind: 'seed', grows: 'tree' },
   seed_pine: { svg: PINECONE, name: 'Kotte', kind: 'seed', grows: 'pine' },
   seed_fruit: { svg: APPLESEED, name: 'Äppelkärna', kind: 'seed', grows: 'fruittree' },
-  wood: { icon: '🪵', name: 'Trä', kind: 'material' },
-  stone: { icon: '🪨', name: 'Sten', kind: 'material' },
-  fruit: { icon: '🍎', name: 'Äpple', kind: 'material' },
-  flower: { icon: '🌸', name: 'Blomma', kind: 'material' },
-  shell: { icon: '🐚', name: 'Snäcka', kind: 'material' },
-  star: { icon: '⭐', name: 'Stjärna', kind: 'material' },
+  wood: { one: 'en bit trä', icon: '🪵', name: 'Trä', plural: 'bitar trä', kind: 'material' },
+  stone: { one: 'en sten', icon: '🪨', name: 'Sten', plural: 'stenar', kind: 'material' },
+  fruit: { one: 'ett äpple', icon: '🍎', name: 'Äpple', plural: 'äpplen', kind: 'material' },
+  flower: { one: 'en blomma', icon: '🌸', name: 'Blomma', plural: 'blommor', kind: 'material' },
+  shell: { one: 'en snäcka', icon: '🐚', name: 'Snäcka', plural: 'snäckor', kind: 'material' },
+  star: { one: 'en stjärna', icon: '⭐', name: 'Stjärna', plural: 'stjärnor', kind: 'material' },
 };
 
 export const ITEM_ORDER = Object.keys(ITEMS);
@@ -48,30 +48,45 @@ export const NATURE = {
 // Things you can build. Costs come back when you pick them up again.
 // `stack`: blocks pile up to this many. `flat`: you can walk on it. `animated`: needs redraws (fire).
 export const BUILDS = {
-  planks: { name: 'Träkloss', cat: 'block', cost: { wood: 2 }, stack: 4 },
-  cobble: { name: 'Stenkloss', cat: 'block', cost: { stone: 2 }, stack: 4 },
-  floor: { name: 'Trägolv', cat: 'block', cost: { wood: 1 }, flat: true },
-  path: { name: 'Stenväg', cat: 'block', cost: { stone: 1 }, flat: true },
-  fence: { name: 'Staket', cat: 'block', cost: { wood: 1 } },
-  chair: { name: 'Stol', cat: 'furniture', cost: { wood: 2 } },
-  table: { name: 'Bord', cat: 'furniture', cost: { wood: 3 } },
-  bench: { name: 'Bänk', cat: 'furniture', cost: { wood: 3 } },
-  bed: { name: 'Säng', cat: 'furniture', cost: { wood: 4, flower: 2 } },
-  shelf: { name: 'Bokhylla', cat: 'furniture', cost: { wood: 4 } },
-  lamp: { name: 'Lykta', cat: 'furniture', cost: { wood: 1, stone: 1 } },
-  pot: { name: 'Blomkruka', cat: 'decor', cost: { stone: 1, flower: 1 } },
-  campfire: { name: 'Lägereld', cat: 'decor', cost: { wood: 2, stone: 2 }, animated: true },
-  mailbox: { name: 'Brevlåda', cat: 'decor', cost: { wood: 2, stone: 1 } },
-  fountain: { name: 'Snäckfontän', cat: 'decor', cost: { stone: 4, shell: 3 } },
-  statue: { name: 'Enhörningsstaty', cat: 'decor', cost: { stone: 3, star: 1 } },
-  rocket: { name: 'Rymdskepp', cat: 'decor', cost: { stone: 4, wood: 2, star: 2 } },
-  rainbow: { name: 'Regnbåge', cat: 'decor', cost: { flower: 4, star: 1 } },
+  house: { name: 'Hus', art: 'ett', cat: 'home', cost: { wood: 10, stone: 6 }, size: 2 },
+  planks: { name: 'Träkloss', art: 'en', cat: 'block', cost: { wood: 2 }, stack: 4 },
+  cobble: { name: 'Stenkloss', art: 'en', cat: 'block', cost: { stone: 2 }, stack: 4 },
+  floor: { name: 'Trägolv', art: 'ett', cat: 'block', cost: { wood: 1 }, flat: true },
+  path: { name: 'Stenväg', art: 'en', cat: 'block', cost: { stone: 1 }, flat: true },
+  fence: { name: 'Staket', art: 'ett', cat: 'block', cost: { wood: 1 } },
+  chair: { name: 'Stol', art: 'en', cat: 'furniture', cost: { wood: 2 } },
+  table: { name: 'Bord', art: 'ett', cat: 'furniture', cost: { wood: 3 } },
+  bench: { name: 'Bänk', art: 'en', cat: 'furniture', cost: { wood: 3 } },
+  bed: { name: 'Säng', art: 'en', cat: 'furniture', cost: { wood: 4, flower: 2 } },
+  shelf: { name: 'Bokhylla', art: 'en', cat: 'furniture', cost: { wood: 4 } },
+  lamp: { name: 'Lykta', art: 'en', cat: 'furniture', cost: { wood: 1, stone: 1 } },
+  pot: { name: 'Blomkruka', art: 'en', cat: 'decor', cost: { stone: 1, flower: 1 } },
+  campfire: { name: 'Lägereld', art: 'en', cat: 'decor', cost: { wood: 2, stone: 2 }, animated: true },
+  mailbox: { name: 'Brevlåda', art: 'en', cat: 'decor', cost: { wood: 2, stone: 1 } },
+  fountain: { name: 'Snäckfontän', art: 'en', cat: 'decor', cost: { stone: 4, shell: 3 } },
+  statue: { name: 'Enhörningsstaty', art: 'en', cat: 'decor', cost: { stone: 3, star: 1 } },
+  rocket: { name: 'Rymdskepp', art: 'ett', cat: 'decor', cost: { stone: 4, wood: 2, star: 2 } },
+  rainbow: { name: 'Regnbåge', art: 'en', cat: 'decor', cost: { flower: 4, star: 1 } },
+  tent: { name: 'Tält', art: 'ett', cat: 'hidden', cost: {} },
 };
 
 export const BUILD_CATS = [
+  { id: 'home', name: 'Hus åt nya vänner' },
   { id: 'block', name: 'Klossar' },
   { id: 'furniture', name: 'Möbler' },
   { id: 'decor', name: 'Pynt' },
+];
+
+// Friends who can move to the island. The first one lives in a tent from the start.
+export const VILLAGERS = [
+  { id: 'stjarna', name: 'Stjärna', kind: 'unicorn', roof: '#ff7eb6', likes: ['rainbow', 'statue', 'pot'], gives: ['flower', 'fruit'] },
+  { id: 'bosse', name: 'Bosse', kind: 'bear', roof: '#c0392b', likes: ['campfire', 'bench', 'table'], gives: ['fruit', 'wood'] },
+  { id: 'pip', name: 'Pip', kind: 'robot', roof: '#4fb3ff', likes: ['rocket', 'lamp', 'mailbox'], gives: ['stone', 'wood'] },
+  { id: 'lisa', name: 'Lisa', kind: 'bunny', roof: '#b48cff', likes: ['pot', 'bed', 'fountain'], gives: ['flower', 'fruit'] },
+  { id: 'rufus', name: 'Rufus', kind: 'fox', roof: '#e8742f', likes: ['campfire', 'shelf', 'lamp'], gives: ['wood', 'stone'] },
+  { id: 'kvack', name: 'Kvack', kind: 'frog', roof: '#4fae4a', likes: ['fountain', 'bench', 'pot'], gives: ['shell', 'flower'] },
+  { id: 'nisse', name: 'Nisse', kind: 'pig', roof: '#ff9cb8', likes: ['table', 'chair', 'campfire'], gives: ['fruit', 'flower'] },
+  { id: 'misse', name: 'Misse', kind: 'cat', roof: '#ffd23f', likes: ['bed', 'shelf', 'chair'], gives: ['shell', 'fruit'] },
 ];
 
 // How long a planted seed takes to become a tree.

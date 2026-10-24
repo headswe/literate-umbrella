@@ -55,6 +55,7 @@ export class Renderer3D {
 
     this.chars = new Map();
     this.tags = new Map();
+    this.bubbles = new Map();
     this.floaters = [];
     this.particles = [];
     this.shakes = new Map();
@@ -93,6 +94,8 @@ export class Renderer3D {
     this.chars.clear();
     for (const t of this.tags.values()) t.remove();
     this.tags.clear();
+    for (const b of this.bubbles.values()) b.remove();
+    this.bubbles.clear();
     this.world = world;
     if (!world) return;
     this.buildTerrain(world);
@@ -248,9 +251,10 @@ export class Renderer3D {
     for (const id of ids) {
       ps.begin();
       const o = { type: 'build', id, rot: 0, h: BUILDSDEF[id].stack ? 2 : 1 };
-      drawBuild(ps, null, o, -0.5, -0.5, 0, 1000, (dx) => dx !== 0);
+      const half = (BUILDSDEF[id].size || 1) / 2;
+      drawBuild(ps, null, o, -half, -half, 0, 1000, (dx) => dx !== 0);
       ps.end();
-      const tall = id === 'shelf' || id === 'rocket' || id === 'lamp' || o.h > 1 ? 1.25 : 0.85;
+      const tall = half > 0.5 ? 2.1 : id === 'shelf' || id === 'rocket' || id === 'lamp' || o.h > 1 ? 1.25 : 0.85;
       cam.left = -tall; cam.right = tall; cam.top = tall; cam.bottom = -tall;
       cam.position.set(4, 4.2, 4);
       cam.lookAt(0, tall * 0.55, 0);
@@ -353,6 +357,7 @@ export class Renderer3D {
         c = makeCharacter(p.kind);
         c.kind = p.kind;
         c.angle = p.angle || 0;
+        c.root.userData.actor = p.id;
         this.scene.add(c.root);
         this.chars.set(p.id, c);
       }
@@ -370,8 +375,31 @@ export class Renderer3D {
         if (tag.textContent !== p.name) tag.textContent = p.name;
         this.place(tag, p.x, p.z + 1.25, p.y);
       } else if (tag) { tag.remove(); this.tags.delete(p.id); }
+
+      // Thought bubble with what a villager wishes for.
+      let bub = this.bubbles.get(p.id);
+      if (p.bubble) {
+        if (!bub) { bub = document.createElement('div'); bub.className = 'bubble'; this.overlay.appendChild(bub); this.bubbles.set(p.id, bub); }
+        if (bub.dataset.html !== p.bubble) { bub.innerHTML = p.bubble; bub.dataset.html = p.bubble; }
+        this.place(bub, p.x, p.z + 1.75 + Math.sin(t * 2.5) * 0.04, p.y);
+      } else if (bub) { bub.remove(); this.bubbles.delete(p.id); }
     }
-    for (const [id, c] of this.chars) if (!seen.has(id)) { this.scene.remove(c.root); this.chars.delete(id); this.tags.get(id)?.remove(); this.tags.delete(id); }
+    for (const [id, c] of this.chars) {
+      if (seen.has(id)) continue;
+      this.scene.remove(c.root); this.chars.delete(id);
+      this.tags.get(id)?.remove(); this.tags.delete(id);
+      this.bubbles.get(id)?.remove(); this.bubbles.delete(id);
+    }
+  }
+
+  // Which character is under a screen point, if any.
+  pickActor(sx, sy) {
+    this.raycaster.setFromCamera(this.ndc(sx, sy), this.camera);
+    const roots = [...this.chars.values()].map((c) => c.root);
+    const hit = this.raycaster.intersectObjects(roots, true)[0];
+    let o = hit?.object;
+    while (o && !o.userData.actor) o = o.parent;
+    return o ? o.userData.actor : null;
   }
 
   place(el, x, y, z) {
