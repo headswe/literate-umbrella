@@ -4,7 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mysön">
 <meta name="theme-color" content="#4fb3d9">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Mysön</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
@@ -29,7 +35,7 @@
   --safe-r: env(safe-area-inset-right, 0px);
   color-scheme: light;
 }
-html, body { height: 100%; margin: 0; overflow: hidden; background: var(--sea); color: var(--ink); }
+html, body { height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; background: var(--sea); color: var(--ink); }
 body {
   font-family: var(--font-body);
   -webkit-user-select: none; user-select: none;
@@ -327,6 +333,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
     </div>
     <button class="big" id="newWorld">Ny ö 🏝️</button>
     <p class="small-note">Ön sparas i den här webbläsaren.</p>
+    <div class="install" id="install" hidden>
+      <button class="big blue" id="installBtn" hidden>Lägg spelet på hemskärmen 📲</button>
+      <p class="small-note" id="installNote"></p>
+    </div>
     <div class="shared-wrap">
       <p class="label"><label for="joinCode">Gå till en kompis ö</label></p>
       <div class="join-row">

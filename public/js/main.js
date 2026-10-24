@@ -1072,6 +1072,48 @@ showDemo();
 renderTitle();
 requestAnimationFrame(frame);
 
+// ---------------------------------------------------------------- app on the home screen
+// Works offline once installed. Not in the bundled artifact page, where there is no sw.js.
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+const installed = matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone === true;
+const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installPrompt = null;
+if (!installed && ios) {
+  $('install').hidden = false;
+  $('installNote').textContent = 'Spela i helskärm: tryck på dela-knappen ⬆️ i Safari och välj "Lägg till på hemskärmen".';
+}
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $('install').hidden = false;
+  $('installBtn').hidden = false;
+  $('installNote').textContent = 'Då öppnas spelet i helskärm, utan webbläsaren runt.';
+});
+$('installBtn').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null;
+  $('install').hidden = true;
+};
+window.addEventListener('appinstalled', () => { $('install').hidden = true; });
+
+// The back button or back swipe should not throw little players out of the game.
+// Keep one extra history entry; going back closes an open menu instead, or says how to get home.
+// Browsers skip entries added before the first tap, so it is added on the first tap.
+document.addEventListener('pointerdown', () => history.pushState({ myson: 1 }, ''), { once: true, capture: true });
+window.addEventListener('popstate', () => {
+  history.pushState({ myson: 1 }, '');
+  if (!playing) return;
+  if (!$('talkSheet').hidden) closeTalk();
+  else if (!$('bagSheet').hidden) closeBag();
+  else if (!$('buildSheet').hidden) closeBuild();
+  else toast('Tryck på 🏠 för att gå hem');
+});
+
 // Speech on iPad and iPhone has to be started from a tap.
 for (const ev of ['click', 'touchend']) document.addEventListener(ev, unlockSpeech, { capture: true, passive: true });
 

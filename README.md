@@ -9,6 +9,12 @@ mobil och dator, ensam eller tillsammans på samma wifi.
 Spelet ligger på https://headswe.github.io/literate-umbrella/ (byggs från `main`
 med GitHub Pages). Öarna sparas i webbläsaren på varje telefon eller iPad.
 
+**Lägg spelet på hemskärmen** så öppnas det i helskärm utan webbläsaren runt, och fungerar
+även utan nät. Android: tryck på **Lägg spelet på hemskärmen 📲** på startsidan (eller
+Chromes meny → Installera app). iPad/iPhone: dela-knappen i Safari → **Lägg till på
+hemskärmen**. Bakåt-knappen stänger menyer i stället för att lämna spelet. Vill man låsa
+iPaden helt till spelet finns **Guidad åtkomst** under Inställningar → Hjälpmedel.
+
 **Spela med en kompis utan dator:** den som har ön trycker på 👋 och läser upp koden,
 till exempel `SOL-42`. Kompisen skriver koden under **Gå till en kompis ö** och trycker
 **Gå med**. Telefonerna försöker prata direkt med varandra (WebRTC via PeerJS). Om
