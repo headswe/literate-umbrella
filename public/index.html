@@ -222,6 +222,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
 .big:active { transform: translateY(3px); box-shadow: 0 2px 0 #3f8f38; }
 .shared-wrap { display: flex; flex-direction: column; gap: 10px; border-top: 2px dashed #e3dccb; padding-top: 14px; }
 .world.shared { background: #e8f7e4; }
+.join-row { display: flex; gap: 10px; }
+.join-row .name-input { flex: 1; min-width: 0; text-transform: uppercase; }
+.join-row .big { flex: none; padding-inline: 20px; }
+.big:disabled { opacity: .6; }
+.invite-code {
+  position: fixed; left: 50%; top: calc(126px + var(--safe-t)); transform: translateX(-50%);
+  font-family: var(--font-display); font-weight: 500; font-size: 17px; padding: 8px 16px; white-space: nowrap;
+}
+.invite-code b { letter-spacing: .06em; }
+#inviteBtn[aria-pressed="true"] { background: #4fb3d9; color: #fff; }
 .big.blue { background: #4fb3d9; box-shadow: 0 5px 0 #3a8fb0; }
 .big.blue:active { box-shadow: 0 2px 0 #3a8fb0; }
 .small-note { font-size: 13px; color: #6d6690; text-align: center; margin: 0; }
@@ -245,6 +255,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
   <div class="hud-top">
     <div class="pill island-name" id="islandName">Mysön</div>
     <div class="hud-buttons">
+      <button class="pill round" id="inviteBtn" aria-label="Bjud in en kompis" aria-pressed="false">👋</button>
       <button class="pill round" id="muteBtn" aria-label="Ljud av/på">🔊</button>
       <button class="pill round" id="homeBtn" aria-label="Till start">🏠</button>
     </div>
@@ -257,6 +268,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
     <button class="pill round" id="rotL" aria-label="Vrid åt vänster">↺</button>
     <button class="pill round" id="rotR" aria-label="Vrid åt höger">↻</button>
   </div>
+  <div class="pill invite-code" id="inviteCode" hidden></div>
   <div class="pill hint" id="hint">Tryck på ett träd för att hugga ner det 🪓</div>
   <div class="pill toast" id="toast" style="opacity:0"></div>
   <div class="hud-bottom"><div class="pill hotbar" id="hotbar"></div></div>
@@ -314,6 +326,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--sun); outli
     </div>
     <button class="big" id="newWorld">Ny ö 🏝️</button>
     <p class="small-note">Ön sparas i den här webbläsaren.</p>
+    <div class="shared-wrap">
+      <p class="label"><label for="joinCode">Gå till en kompis ö</label></p>
+      <div class="join-row">
+        <input class="name-input" id="joinCode" maxlength="12" placeholder="Kod, t.ex. SOL-42" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button class="big blue" id="joinBtn">Gå med</button>
+      </div>
+      <p class="small-note" id="joinNote">Kompisen trycker på 👋 på sin ö och läser upp koden.</p>
+    </div>
     <div id="sharedWrap" class="shared-wrap" hidden>
       <p class="label">Tillsammans på wifi:t</p>
       <div class="worlds" id="sharedWorlds"></div>

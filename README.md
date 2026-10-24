@@ -4,7 +4,18 @@ Ett mysigt 3D-kubspel för barn (5–7 år). Hugg träd, plantera nya, bygg möb
 och få nya djurvänner som flyttar in och önskar sig saker. Spelas i webbläsaren på iPad,
 mobil och dator, ensam eller tillsammans på samma wifi.
 
-## Spela tillsammans på wifi:t
+## Spela på telefonen
+
+Spelet ligger på https://headswe.github.io/literate-umbrella/ (byggs från `main`
+med GitHub Pages). Öarna sparas i webbläsaren på varje telefon eller iPad.
+
+**Spela med en kompis utan dator:** den som har ön trycker på 👋 och läser upp koden,
+till exempel `SOL-42`. Kompisen skriver koden under **Gå till en kompis ö** och trycker
+**Gå med**. Telefonerna pratar direkt med varandra (WebRTC); PeerJS gratistjänst
+används bara för att de ska hitta varandra. Ön och kompisens ryggsäck sparas hos den
+som bjöd in. När värden går hem kommer kompisarna tillbaka till startsidan.
+
+## Spela tillsammans på wifi:t med en dator
 
 På en dator i hemmet:
 
@@ -52,3 +63,4 @@ Lägg till `?low` i adressen för enklare grafik utan skuggor.
 - `public/js/render3d.js`, `models.js`, `characters.js`, `textures.js` – 3D-grafik med three.js
 - `public/js/main.js` – spelloop, styrning, menyer och prat
 - `public/js/net.js`, `server.js` – delade öar över wifi med WebSocket
+- `public/js/p2p.js` – spela telefon till telefon med en kod (PeerJS/WebRTC); `?peer=värd:port` använder en egen PeerJS-server

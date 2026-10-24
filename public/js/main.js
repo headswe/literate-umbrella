@@ -2,6 +2,7 @@
 import { ITEMS, ITEM_ORDER, AVATARS, ISLAND_NAMES, T, BUILDS, BUILD_CATS, VILLAGERS } from './data.js';
 import { Sim, newWorldSave, loadWorld, toSave, heightAt, isWalkable, canStep, ensurePlayer, toolFor, tileAt, canAfford, applyPatch } from './sim.js';
 import { connect } from './net.js';
+import * as p2p from './p2p.js';
 import { speak, stopSpeaking } from './speech.js';
 import { Renderer3D } from './render3d.js';
 import { findPath } from './path.js';
@@ -19,6 +20,9 @@ let world = null;     // the world being shown
 let sim = null;       // only in single player; the server runs it on shared islands
 let net = null;       // connection to the island server, when there is one
 let shared = null;    // id of the shared island we are on
+let link = null;      // where our moves go on a shared island: the server, or a friend's device
+let hosting = null;   // set while friends play on our island over WebRTC
+const guests = new Map(); // their connection -> player
 const remotes = new Map();
 let playing = false;
 let dirty = false;
@@ -115,6 +119,7 @@ function joinShared(id) {
   unlockAudio();
   saveProfile();
   shared = id;
+  link = net;
   net.send({ t: 'join', world: id, player: { id: me.id, name: me.name, kind: me.kind } });
   toast2('Ansluter…');
 }
@@ -149,16 +154,137 @@ function onNetStatus(up) {
   if (up) {
     net.send({ t: 'list' });
     // Back after a hiccup: hop onto the same island again.
-    if (playing && shared && !was) net.send({ t: 'join', world: shared, player: { id: me.id, name: me.name, kind: me.kind } });
+    if (playing && shared && link === net && !was) net.send({ t: 'join', world: shared, player: { id: me.id, name: me.name, kind: me.kind } });
   }
   if (!playing) renderTitle();
-  if (playing && shared && !up) toast('Tappade kontakten med servern…');
+  if (playing && shared && link === net && !up) toast('Tappade kontakten med servern…');
 }
 
 // Only the island server answers this; inside an artifact or a plain file it fails quietly.
 fetch('api/hello').then((r) => (r.ok ? r.json() : null)).then((j) => {
   if (j && j.myson) net = connect(onNet, onNetStatus);
 }).catch(() => {});
+
+// ---------------------------------------------------------------- friends over WebRTC (phone to phone)
+const clean = (p) => ({
+  id: String(p?.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 20) || 'p' + Math.random().toString(36).slice(2, 8),
+  name: String(p?.name || '').slice(0, 14),
+  kind: kindOf(String(p?.kind || '')),
+});
+const myInfo = () => ({ id: me.id, name: me.name, kind: me.kind, x: me.x, y: me.y, z: me.z, angle: me.angle });
+
+async function startHosting() {
+  if (hosting || shared || !playing) return;
+  $('inviteBtn').disabled = true;
+  toast('Gör en kod…');
+  try {
+    hosting = await p2p.host(onGuest, onGuestLeft);
+  } catch {
+    toast('Det gick inte att bjuda in just nu 😕');
+    $('inviteBtn').disabled = false;
+    return;
+  }
+  $('inviteBtn').disabled = false;
+  showInvite();
+  speak('Koden är ' + hosting.code.replace('-', ' '));
+}
+
+function stopHosting() {
+  if (!hosting) return;
+  hosting.close();
+  hosting = null;
+  guests.clear();
+  remotes.clear();
+  showInvite();
+}
+
+function showInvite() {
+  const pill = $('inviteCode');
+  pill.hidden = !hosting;
+  $('inviteBtn').hidden = !!shared;
+  $('inviteBtn').setAttribute('aria-pressed', String(!!hosting));
+  if (!hosting) return;
+  const n = guests.size;
+  pill.innerHTML = `Kod: <b></b><span></span>`;
+  pill.children[0].textContent = hosting.code;
+  pill.children[1].textContent = n ? ` · ${n} ${n === 1 ? 'kompis' : 'kompisar'} här` : ' · väntar på kompisar';
+}
+
+function onGuest(conn, m) {
+  if (!playing || !hosting || !m || typeof m !== 'object') return;
+  if (m.t === 'join') {
+    const p = clean(m.player);
+    guests.set(conn, p);
+    ensurePlayer(world, p.id, { name: p.name, kind: p.kind });
+    dirty = true;
+    const others = [myInfo(), ...[...guests.values()].filter((g) => g !== p).map((g) => ({ ...g, ...remotes.get(g.id) }))];
+    hosting.send(conn, { t: 'joined', save: toSave(world), others });
+    hosting.broadcast({ t: 'hi', p }, conn);
+    remotes.set(p.id, { ...p, x: world.spawn.x, y: world.spawn.y, z: 1, rx: world.spawn.x, ry: world.spawn.y });
+    toast(`${p.name || 'En kompis'} kom till ön! 👋`);
+    sfx.gain();
+    showInvite();
+    return;
+  }
+  const p = guests.get(conn);
+  if (!p) return;
+  if (m.t === 'act' && m.a && typeof m.a === 'object') {
+    share(sim.act({ ...m.a, by: p.id }));
+  } else if (m.t === 'pos') {
+    const pos = { x: +m.x || 0, y: +m.y || 0, z: +m.z || 0, angle: +m.angle || 0, moving: !!m.moving, swing: +m.swing || 0 };
+    const r = remotes.get(p.id);
+    if (r) Object.assign(r, pos);
+    const pl = world.players[p.id];
+    if (pl) { pl.x = pos.x; pl.y = pos.y; }
+    hosting.broadcast({ t: 'pos', id: p.id, ...pos }, conn);
+  } else if (m.t === 'leave') {
+    conn.close();
+  }
+}
+
+function onGuestLeft(conn) {
+  const p = guests.get(conn);
+  if (!p) return;
+  guests.delete(conn);
+  remotes.delete(p.id);
+  hosting?.broadcast({ t: 'bye', id: p.id });
+  if (playing) toast(`${p.name || 'En kompis'} gick hem`);
+  save();
+  showInvite();
+}
+
+async function joinFriend() {
+  const code = $('joinCode').value.trim();
+  const note = $('joinNote');
+  if (!code) { $('joinCode').focus(); return; }
+  unlockAudio();
+  saveProfile();
+  note.textContent = 'Letar efter ön…';
+  $('joinBtn').disabled = true;
+  let conn;
+  try {
+    conn = await p2p.join(code, onNet, () => {
+      if (link !== conn) return;
+      // goHome while still marked as a guest, so the friend's island is not saved as our own.
+      if (playing) { goHome(); $('joinNote').textContent = 'Kompisen stängde sin ö.'; }
+      else { shared = null; link = null; }
+    });
+  } catch {
+    note.textContent = 'Hittade ingen ö med den koden. Kolla koden och att kompisen har ön öppen.';
+    $('joinBtn').disabled = false;
+    return;
+  }
+  $('joinBtn').disabled = false;
+  note.textContent = 'Hittade ön! Går in…';
+  stopHosting();
+  shared = 'friend:' + code;
+  link = conn;
+  conn.send({ t: 'join', player: { id: me.id, name: me.name, kind: me.kind } });
+}
+
+$('joinBtn').onclick = joinFriend;
+$('joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinFriend(); });
+$('inviteBtn').onclick = () => (hosting ? toast('Koden är ' + hosting.code) : startHosting());
 
 $('newShared').onclick = () => { net.send({ t: 'create' }); toast2('Skapar en ny ö…'); };
 
@@ -224,6 +350,7 @@ function startGame(save, onServer = false) {
   ensureThumbs();
   vilPos.clear();
   renderInventory();
+  showInvite();
   lastSave = performance.now();
 }
 
@@ -236,7 +363,8 @@ function save() {
 
 function goHome() {
   save();
-  if (shared) { net?.send({ t: 'leave' }); shared = null; remotes.clear(); }
+  if (shared) { link?.send({ t: 'leave' }); if (link !== net) link?.close(); shared = null; link = null; remotes.clear(); }
+  stopHosting();
   showDemo();
   $('hud').hidden = true;
   $('title').hidden = false;
@@ -536,8 +664,14 @@ function face(dx, dy) {
 
 // On a shared island the server decides; alone, the local rules do.
 function act(a) {
-  if (shared) net.send({ t: 'act', a });
-  else handle(sim.act(a));
+  if (shared) link.send({ t: 'act', a });
+  else share(sim.act(a));
+}
+
+// Run patches here, and pass them on to friends playing on our island.
+function share(ps) {
+  handle(ps);
+  if (hosting && ps.length) hosting.broadcast({ t: 'patches', ps });
 }
 
 function goTalk(vid) {
@@ -623,7 +757,8 @@ function sendPos(t) {
   const sig = JSON.stringify(msg);
   if (sig === lastSent && !me.moving) return;
   lastSent = sig;
-  net.send(msg);
+  if (hosting) hosting.broadcast({ ...msg, id: me.id });
+  else link.send(msg);
 }
 
 function remoteActors(dt) {
@@ -866,8 +1001,8 @@ function frame(t) {
 
     const pl = world.players[me.id];
     pl.x = me.x; pl.y = me.y;
-    if (sim) handle(sim.tick(now));
-    else sendPos(t);
+    if (sim) share(sim.tick(now));
+    if (shared || hosting) sendPos(t);
     if (dirty && t - lastSave > 4000) { save(); lastSave = t; }
     renderer.render({ players: [me, ...remoteActors(dt), ...villagerActors(dt)], marker, focus: me, t: t / 1000, dt, now });
   } else if (world) {
