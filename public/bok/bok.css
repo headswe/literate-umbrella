@@ -33,6 +33,7 @@
 }
 
 * { box-sizing: border-box; }
+body::before { content: ''; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
 html { --storlek: 20px; }
 body {
   margin: 0;
@@ -51,9 +52,9 @@ main:focus { outline: none; }
 
 /* ---------- top bar */
 .bar {
-  position: sticky; top: 0; z-index: 10;
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10;
   display: flex; align-items: center; gap: 4px;
-  padding: calc(env(safe-area-inset-top) + 6px) 10px 6px;
+  padding: 6px max(10px, env(safe-area-inset-left, 0px)) 6px max(10px, env(safe-area-inset-right, 0px));
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -80,7 +81,7 @@ main:focus { outline: none; }
 }
 
 .installningar {
-  position: fixed; z-index: 11; right: 10px; top: calc(env(safe-area-inset-top) + 56px);
+  position: fixed; z-index: 11; right: 10px; top: calc(env(safe-area-inset-top, 0px) + 56px);
   background: var(--yta); border: 1px solid var(--linje); border-radius: 14px;
   padding: 12px 14px; box-shadow: 0 12px 30px var(--skugga); font-size: 16px;
 }

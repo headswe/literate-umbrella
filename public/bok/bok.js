@@ -14,10 +14,13 @@ const lagrat = (k, d) => { try { return JSON.parse(localStorage.getItem('bok:' +
 const spara = (k, v) => { try { localStorage.setItem('bok:' + k, JSON.stringify(v)); } catch { /* private mode */ } };
 
 let storlek = lagrat('storlek', 20);
-let tema = lagrat('tema', 'natt');
+const ljust = document.documentElement.dataset.theme === 'light'
+  || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: light)').matches);
+let tema = lagrat('tema', ljust ? 'dag' : 'natt');
 function tillampa() {
   document.documentElement.style.setProperty('--storlek', storlek + 'px');
   document.documentElement.dataset.tema = tema;
+  document.documentElement.style.colorScheme = tema === 'natt' ? 'dark' : 'light';
   document.querySelector('meta[name=theme-color]').content = getComputedStyle(document.body).backgroundColor;
   panel.querySelectorAll('[data-tema]').forEach((b) => b.classList.toggle('vald', b.dataset.tema === tema));
 }
@@ -78,10 +81,10 @@ function omslag() {
       el('p', { class: 'forfattare' }, bok.forfattare),
       el('div', { class: 'knappar' },
         s && s.kapitel
-          ? el('a', { class: 'knapp primar', href: `#/kapitel/${s.kapitel}` }, `Fortsätt · kapitel ${s.kapitel}`)
-          : el('a', { class: 'knapp primar', href: '#/kapitel/1' }, 'Börja läsa'),
-        el('a', { class: 'knapp', href: '#/innehall' }, 'Innehåll'),
-        el('a', { class: 'knapp', href: '#/personer' }, 'Personer'),
+          ? el('a', { class: 'knapp primar', href: `#kapitel-${s.kapitel}` }, `Fortsätt · kapitel ${s.kapitel}`)
+          : el('a', { class: 'knapp primar', href: '#kapitel-1' }, 'Börja läsa'),
+        el('a', { class: 'knapp', href: '#innehall' }, 'Innehåll'),
+        el('a', { class: 'knapp', href: '#personer' }, 'Personer'),
       ),
     ),
     el('p', { class: 'sammanfattning' }, bok.sammanfattning),
@@ -102,9 +105,9 @@ function innehall() {
         el('span', { class: 'etikett' + (lasta[n] ? ' last' : '') }, finns ? (lasta[n] ? 'Läst ✓' : '') : 'Kommer'),
         el('span', { class: 'om' }, k.om),
       ];
-      return el('li', {}, finns ? el('a', { href: `#/kapitel/${n}` }, delar) : el('div', { class: 'kommer' }, delar));
+      return el('li', {}, finns ? el('a', { href: `#kapitel-${n}` }, delar) : el('div', { class: 'kommer' }, delar));
     })),
-    el('nav', { class: 'bottenmeny' }, el('a', { href: '#/' }, 'Omslaget'), el('a', { href: '#/personer' }, 'Personer')),
+    el('nav', { class: 'bottenmeny' }, el('a', { href: '#start' }, 'Omslaget'), el('a', { href: '#personer' }, 'Personer')),
   );
 }
 
@@ -116,7 +119,7 @@ function personer() {
       const b = bilder.find((x) => x.plats === 'person' && x.person === p.namn);
       return el('article', { class: 'person' }, b && bild(b), el('h3', {}, p.namn), el('p', {}, p.om));
     })),
-    el('nav', { class: 'bottenmeny' }, el('a', { href: '#/' }, 'Omslaget'), el('a', { href: '#/innehall' }, 'Innehåll')),
+    el('nav', { class: 'bottenmeny' }, el('a', { href: '#start' }, 'Omslaget'), el('a', { href: '#innehall' }, 'Innehåll')),
   );
 }
 
@@ -150,9 +153,9 @@ function kapitel(n) {
         el('p', {}, nasta ? `Slut på kapitel ${ORD[n] || n}.` : kommande ? `Fortsättning följer: ${kommande.titel}.` : 'Slut.')),
     ),
     el('nav', { class: 'nav-kapitel' },
-      forra ? el('a', { href: `#/kapitel/${forra.nummer}` }, el('small', {}, '← Förra'), forra.titel) : el('a', { href: '#/' }, el('small', {}, '←'), 'Omslaget'),
-      nasta ? el('a', { class: 'nasta', href: `#/kapitel/${nasta.nummer}` }, el('small', {}, 'Nästa →'), nasta.titel)
-        : el('a', { class: 'nasta', href: '#/innehall' }, el('small', {}, '→'), 'Innehåll'),
+      forra ? el('a', { href: `#kapitel-${forra.nummer}` }, el('small', {}, '← Förra'), forra.titel) : el('a', { href: '#start' }, el('small', {}, '←'), 'Omslaget'),
+      nasta ? el('a', { class: 'nasta', href: `#kapitel-${nasta.nummer}` }, el('small', {}, 'Nästa →'), nasta.titel)
+        : el('a', { class: 'nasta', href: '#innehall' }, el('small', {}, '→'), 'Innehåll'),
     ),
   );
 }
@@ -219,7 +222,7 @@ lasUppKnapp.onclick = () => {
 // ---------------------------------------------------------------- router
 function route() {
   stoppaLasning();
-  const [, vy, arg] = location.hash.split('/');
+  const [vy, arg] = location.hash.slice(1).split('-');
   aktuelltKapitel = vy === 'kapitel' ? Number(arg) : null;
   lasUppKnapp.hidden = !(aktuelltKapitel && tal);
   framsteg.style.width = '0';

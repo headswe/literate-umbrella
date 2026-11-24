@@ -25,6 +25,9 @@ att det är för många anrop.
 - På GitHub: lägg samma variabler som hemligheter (Settings → Secrets and variables → Actions)
   och kör **Bokens bilder** under Actions. Nya bilder committas automatiskt.
 
+Som Claude-artifact: `npm run build:bok-artifact` gör `dist/bok/` (sidan med CSS och JS inbakade,
+texten och bilderna bredvid).
+
 Nytt kapitel: lägg till det i `kapitel` i `bok.json` och nya bilder i `bilder.json`
 (`efter` är början på stycket som bilden ska stå efter).
 
