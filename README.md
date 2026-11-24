@@ -13,15 +13,17 @@ uppläsning på svenska (▶) och appen minns var man slutade läsa.
 
 - `public/bok/bok.json` – texten (titel, personer, kapitelplan och de skrivna kapitlen)
 - `public/bok/bilder.json` – varje bild: var den hör hemma, bildtext och prompten till GPT
-- `public/bok/bilder/` – de färdiga bilderna (`<id>.webp`). Saknas en bild visas en platshållare.
+- `public/bok/bilder/` – de färdiga bilderna (`<id>.jpg`). Saknas en bild visas en platshållare.
 
-**Rita bilderna med GPT** (OpenAI:s `gpt-image-1`):
+**Rita bilderna med GPT.** Skriptet använder Azure OpenAI när `GPT_IMAGE_API` (deploymentens
+`…/images/generations?api-version=…`-adress) och `GPT_IMAGE_KEY` finns, annars OpenAI med
+`OPENAI_API_KEY`. Bara bilder som saknas ritas, en i taget, och skriptet väntar när Azure säger
+att det är för många anrop.
 
-- På GitHub: lägg din nyckel som hemlighet `OPENAI_API_KEY` (Settings → Secrets and variables →
-  Actions) och kör **Bokens bilder** under Actions. Bilderna som saknas ritas och committas.
-  Skriv id:n (t.ex. `omslag k1-handen`) för att rita om dem.
-- På datorn: `OPENAI_API_KEY=sk-... npm run bok:bilder` (eller `npm run bok:bilder -- omslag`).
-  `OPENAI_IMAGE_QUALITY=high` ger finare bilder.
+- I terminalen: `npm run bok:bilder`, eller `npm run bok:bilder -- omslag k1-handen` för att rita
+  om vissa. `OPENAI_IMAGE_QUALITY=high` ger finare bilder.
+- På GitHub: lägg samma variabler som hemligheter (Settings → Secrets and variables → Actions)
+  och kör **Bokens bilder** under Actions. Nya bilder committas automatiskt.
 
 Nytt kapitel: lägg till det i `kapitel` i `bok.json` och nya bilder i `bilder.json`
 (`efter` är början på stycket som bilden ska stå efter).

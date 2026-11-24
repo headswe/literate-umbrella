@@ -1,5 +1,5 @@
 // Reader for "De sovande kungarnas värld". Text in bok.json, pictures listed in bilder.json
-// and drawn with GPT by scripts/book-images.mjs into bilder/<id>.webp.
+// and drawn with GPT by scripts/book-images.mjs into bilder/<id>.jpg.
 const [bok, { bilder }] = await Promise.all(['bok.json', 'bilder.json'].map((f) => fetch(f).then((r) => r.json())));
 
 const app = document.getElementById('app');
@@ -51,13 +51,13 @@ const ORD = ['noll', 'ett', 'två', 'tre', 'fyra', 'fem', 'sex', 'sju', 'åtta',
 function bild(b, klass = 'bild') {
   const ph = () => el('div', { class: 'platshallare', role: 'img', 'aria-label': b.bildtext },
     el('div', {}, el('b', {}, '◬'), el('span', {}, b.plats === 'kapitel' ? 'Bilden är inte ritad än' : b.bildtext)));
-  const img = el('img', { class: klass, src: `bilder/${b.id}.webp`, alt: b.bildtext, loading: b.plats === 'omslag' ? 'eager' : 'lazy', decoding: 'async' });
+  const img = el('img', { class: klass, src: `bilder/${b.id}.jpg`, alt: b.bildtext, loading: b.plats === 'omslag' ? 'eager' : 'lazy', decoding: 'async' });
   img.addEventListener('error', () => img.replaceWith(ph()));
   img.addEventListener('click', () => visa(b));
   return img;
 }
 function visa(b) {
-  ljuslada.querySelector('img').src = `bilder/${b.id}.webp`;
+  ljuslada.querySelector('img').src = `bilder/${b.id}.jpg`;
   ljuslada.querySelector('p').textContent = b.bildtext;
   ljuslada.hidden = false;
 }

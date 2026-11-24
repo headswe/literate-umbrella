@@ -1,5 +1,6 @@
 # Draws the book's missing illustrations with OpenAI's GPT image model and commits them.
-# Needs the repository secret OPENAI_API_KEY (Settings → Secrets and variables → Actions).
+# Needs repository secrets GPT_IMAGE_API + GPT_IMAGE_KEY (Azure OpenAI), or OPENAI_API_KEY
+# (Settings → Secrets and variables → Actions).
 # Run it from the Actions tab: "Bokens bilder" → Run workflow.
 name: Bokens bilder
 
@@ -29,6 +30,8 @@ jobs:
       - name: Draw illustrations
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GPT_IMAGE_API: ${{ secrets.GPT_IMAGE_API }}
+          GPT_IMAGE_KEY: ${{ secrets.GPT_IMAGE_KEY }}
           OPENAI_IMAGE_QUALITY: ${{ inputs.kvalitet }}
           BILDER: ${{ inputs.bilder }}
         run: node scripts/book-images.mjs $BILDER
