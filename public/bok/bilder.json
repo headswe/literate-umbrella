@@ -27,10 +27,10 @@
   {
    "id": "person-kessik",
    "plats": "person",
-   "person": "Alpha Kessik-9",
+   "person": "Marshal Kessik-9",
    "storlek": "1024x1024",
-   "bildtext": "Alpha Kessik-9",
-   "prompt": "Portrait of a tall female cyborg soldier commander, body mostly machine, rust-red hooded mantle edged with brass, grille-shaped helmet with softly glowing green lenses, a long radium rifle cradled in her arm, a thin antenna rising from her spine. Standing in a vast gothic metal hangar with hanging censers."
+   "bildtext": "Marshal Kessik-9",
+   "prompt": "Head-and-shoulders character portrait, same framing as the other portraits in the book, dark atmospheric background. A Skitarii Marshal, commander of a maniple of two hundred cyborg soldiers, so augmented that almost nothing human is left: no visible face, only a grille-shaped helm with three softly glowing green lenses, a body of dark metal and brass beneath a rust-red hooded mantle edged with brass and marshal's insignia. A radium carbine cradled in one arm, a thin antenna rising from her spine. Cold, machine-like stillness. Vast gothic metal hangar with hanging censers behind."
   },
   {
    "id": "person-sethrakh",
@@ -135,6 +135,78 @@
    "efter": "Det var en fot.",
    "bildtext": "Avtrycket var färskt.",
    "prompt": "Close-up at night of a fresh footprint in black sand at the edge where stone meets glass: long and narrow with three claw-like toes and a rear spur, sharp-edged, made by something heavy walking upright. More prints curve away along the crater rim into darkness toward a faint green glow far below. A gauntleted armored hand reaches into frame. Ominous mood."
+  },
+  {
+   "id": "k3-trappan",
+   "plats": "kapitel",
+   "kapitel": 3,
+   "efter": "Archmagosen behövde inte trappan alls.",
+   "bildtext": "Archmagosen går nerför kraterväggen på sina mekadendriter, som en spindel.",
+   "prompt": "Dawn inside a vast crater with mirror-smooth black stone walls. A narrow spiral stair of too-tall, too-narrow steps is carved into the wall. Red-cloaked cyborg soldiers climb down it mechanically; giant blue-armored warriors take the steps two at a time. A tall thin robed tech-priest ignores the stair and walks straight down the sheer wall on four long spider-like mechanical arms, robe hanging, a brass birdcage with a yellow canary pressed to his chest. Far below, a black pyramid with faint green lines."
+  },
+  {
+   "id": "k3-ritualen",
+   "plats": "kapitel",
+   "kapitel": 3,
+   "efter": "Det började med stämgafflarna.",
+   "bildtext": "Ritualen vid pyramidens fot: sju stämgafflar och en hand som inte borde röra sig.",
+   "prompt": "At the foot of an enormous black pyramid, tech-priests in red robes have built a makeshift altar: three linked cogitators, a brass frame holding seven tuning forks of different lengths, and a small cupped metal bowl, surrounded by smoking censers of oil and myrrh. A tall thin elderly tech-priest with mechanical spider-arms holds up a glass stasis container with a skeletal silver metal hand inside. A magos with a brass mask face and three green lenses steps forward in protest. Blue-armored warriors watch. Incense haze, dawn light."
+  },
+  {
+   "id": "k3-porten",
+   "plats": "kapitel",
+   "kapitel": 3,
+   "efter": "Ytan framför handen började röra sig.",
+   "bildtext": "Pyramiden öppnar munnen.",
+   "prompt": "Close view of the base of a colossal pitch-black pyramid. A small skeletal silver metal hand presses its palm against the surface; from it, green light spreads outward like ripples through angular circuit-like veins across the whole wall. Directly in front of the hand the black stone has turned soft and liquid and is drawing back into a vaulted opening three meters tall. Cold air streams out. A tall robed priest holds a brass birdcage with a canary up like a lantern before the dark doorway; armored warriors and cyborg soldiers stand behind."
+  },
+  {
+   "id": "k3-korridoren",
+   "plats": "kapitel",
+   "kapitel": 3,
+   "efter": "Det gröna ljuset flödade genom tecknen",
+   "bildtext": "Gravregistret: varje sovande krigares namn, inristat i väggarna.",
+   "prompt": "A wide, ten-meter-high corridor sloping down into darkness inside a necron tomb, walls of the same black material covered floor to ceiling with carved glyphs in horizontal and vertical rows: circles, lines, crescents and everywhere one symbol of a ring with a straight line through it like a closed eye. Green light flows through the carved glyphs like water in gutters, giving barely enough light to see. A small column of blue-armored giants leads red-cloaked cyborg soldiers and a tall robed priest down the slope."
+  },
+  {
+   "id": "person-pallas",
+   "plats": "person",
+   "person": "Pallas",
+   "storlek": "1024x1024",
+   "bildtext": "Pallas",
+   "prompt": "Head-and-shoulders character portrait, same framing as the other portraits in the book, dark atmospheric background. A grizzled veteran super-soldier in deep blue ornate power armor with gold trim, a white inverted-horseshoe chapter emblem on the shoulder pad, the armor visibly patched with plates from three different armor patterns and covered in old scars and dents. Weathered, heavily scarred face with a dry, almost amused look. He cradles an old, lovingly maintained flamer with a small blue pilot flame. Faint firelight."
+  },
+  {
+   "id": "person-castor",
+   "plats": "person",
+   "person": "Castor",
+   "storlek": "1024x1024",
+   "bildtext": "Castor",
+   "prompt": "Head-and-shoulders character portrait, same framing as the other portraits in the book, dark atmospheric background. A younger, proud super-soldier in deep blue ornate power armor with gold trim, a white inverted-horseshoe chapter emblem on the shoulder pad, sharp confident face, holding a plasma gun whose coils glow bright blue, light reflecting on his armor. Impatient energy in his posture."
+  },
+  {
+   "id": "person-tullian",
+   "plats": "person",
+   "person": "Tullian",
+   "storlek": "1024x1024",
+   "bildtext": "Tullian",
+   "prompt": "Head-and-shoulders character portrait, same framing as the other portraits in the book, dark atmospheric background. A quiet, watchful super-soldier marksman in deep blue ornate power armor with gold trim, a white inverted-horseshoe chapter emblem on the shoulder pad, calm closed expression, holding a boltgun in one hand and a handheld auspex scanner with a green glowing screen in the other, the screen light on his face."
+  },
+  {
+   "id": "person-severan",
+   "plats": "person",
+   "person": "Severan",
+   "storlek": "1024x1024",
+   "bildtext": "Severan",
+   "prompt": "Head-and-shoulders character portrait, same framing as the other portraits in the book, dark atmospheric background. The youngest super-soldier of the squad in brand-new deep blue ornate power armor with gold trim, a white inverted-horseshoe chapter emblem on the shoulder pad, the armor still gleaming and unscratched at the joints, a young but enormous man with a serious, earnest face, helmet held under his arm, boltgun at his side."
+  },
+  {
+   "id": "person-kaplan",
+   "plats": "person",
+   "person": "Kaplan Varro",
+   "storlek": "1024x1024",
+   "bildtext": "Kaplan Varro",
+   "prompt": "Head-and-shoulders character portrait, same framing as the other portraits in the book, dark atmospheric background. A warrior-priest in pitch-black power armor, his helmet a skull-faced mask of polished bone-white ceramite with dark eye lenses. He holds a crozius arcanum, a winged sacred mace. The only blue on him is the chapter emblem on one shoulder pad. Candlelit chapel, stern and contemplative."
   }
  ]
 }
