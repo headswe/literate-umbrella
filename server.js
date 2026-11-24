@@ -18,7 +18,7 @@ const VENDOR = {
   '/vendor/peerjs.min.js': join(HERE, 'node_modules/peerjs/dist/peerjs.min.js'),
   '/vendor/mqtt.min.js': join(HERE, 'node_modules/mqtt/dist/mqtt.min.js'),
 };
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 
 // ---------------------------------------------------------------- static files
 const server = createServer(async (req, res) => {

@@ -1,0 +1,41 @@
+# Draws the book's missing illustrations with OpenAI's GPT image model and commits them.
+# Needs the repository secret OPENAI_API_KEY (Settings → Secrets and variables → Actions).
+# Run it from the Actions tab: "Bokens bilder" → Run workflow.
+name: Bokens bilder
+
+on:
+  workflow_dispatch:
+    inputs:
+      bilder:
+        description: 'Bilder att göra om (id:n med mellanslag, tomt = bara de som saknas)'
+        required: false
+        default: ''
+      kvalitet:
+        description: 'Kvalitet: low, medium eller high'
+        required: false
+        default: 'medium'
+
+permissions:
+  contents: write
+
+jobs:
+  draw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Draw illustrations
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_IMAGE_QUALITY: ${{ inputs.kvalitet }}
+          BILDER: ${{ inputs.bilder }}
+        run: node scripts/book-images.mjs $BILDER
+      - name: Commit new pictures
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/bok/bilder
+          git diff --cached --quiet || (git commit -m "Nya bilder till boken" && git push)

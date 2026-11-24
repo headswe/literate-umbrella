@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>De sovande kungarnas värld</title>
+<meta name="description" content="En Warhammer 40 000-roman av Sebastian, med bilder.">
+<meta name="theme-color" content="#0d0f12">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="ikon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="bok.css">
+</head>
+<body>
+<header class="bar" id="bar">
+  <a class="bar-btn" id="hem" href="#/" aria-label="Till omslaget">⌂</a>
+  <div class="bar-titel" id="bar-titel"></div>
+  <button class="bar-btn" id="las-upp" aria-label="Läs upp" hidden>▶</button>
+  <button class="bar-btn" id="installningar-knapp" aria-label="Textinställningar">Aa</button>
+  <div class="framsteg" id="framsteg"></div>
+</header>
+
+<div class="installningar" id="installningar" hidden>
+  <div class="rad">
+    <span>Textstorlek</span>
+    <button data-storlek="-1" aria-label="Mindre text">A−</button>
+    <button data-storlek="1" aria-label="Större text">A+</button>
+  </div>
+  <div class="rad">
+    <span>Tema</span>
+    <button data-tema="natt">Natt</button>
+    <button data-tema="pergament">Pergament</button>
+    <button data-tema="dag">Dag</button>
+  </div>
+</div>
+
+<main id="app" tabindex="-1"></main>
+
+<div class="ljuslada" id="ljuslada" hidden>
+  <img alt="">
+  <p></p>
+</div>
+
+<script type="module" src="bok.js"></script>
+</body>
+</html>

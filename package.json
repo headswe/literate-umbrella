@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "build:artifact": "node scripts/build-artifact.mjs"
+    "build:artifact": "node scripts/build-artifact.mjs",
+    "bok:bilder": "node scripts/book-images.mjs"
   },
   "devDependencies": {
     "esbuild": "0.24.2"

@@ -1,0 +1,140 @@
+{
+ "stil": "Painterly grimdark science-fantasy book illustration, oil painting with rich texture, dramatic chiaroscuro lighting, cinematic composition, gothic far-future aesthetic. No text, no letters, no logos, no watermarks.",
+ "bilder": [
+  {
+   "id": "omslag",
+   "plats": "omslag",
+   "storlek": "1024x1536",
+   "bildtext": "De sovande kungarnas värld",
+   "prompt": "Book cover art, portrait orientation. A vast dead desert of melted and re-hardened glass under a dying orange sun. In the foreground five towering armored warriors in deep blue ornate power armor stand on a glass dune, seen from behind, next to a tall thin robed red tech-priest with spider-like mechanical arms holding a small brass birdcage with a yellow canary. Far below, at the bottom of a huge crater, a half-buried black pyramid glows with faint green geometric lines. Black obelisks ring the crater. Leave calm empty sky at the top for a title."
+  },
+  {
+   "id": "person-ivar",
+   "plats": "person",
+   "person": "Ivar",
+   "storlek": "1024x1024",
+   "bildtext": "Broder-sergeant Ivar",
+   "prompt": "Portrait of a veteran super-soldier sergeant in deep blue ornate power armor with gold trim, helmet held at his hip, weathered stern but thoughtful face, short dark hair with grey, service studs on his brow, an old leather-bound book of tactics chained at his belt. Dim chapel candlelight."
+  },
+  {
+   "id": "person-varr",
+   "plats": "person",
+   "person": "Archmagos Explorator Thelonius Varr",
+   "storlek": "1024x1024",
+   "bildtext": "Archmagos Explorator Thelonius Varr",
+   "prompt": "Portrait of a very tall, thin elderly tech-priest in a patched crimson robe, his face still human and deeply lined like a dry riverbed, left eye pale grey and human, right eye replaced by a cluster of small brass lenses. Four long jointed spider-like mechanical arms rise from his back. He holds a small brass birdcage with a living yellow canary and smiles faintly. Warm red forge light, incense smoke."
+  },
+  {
+   "id": "person-kessik",
+   "plats": "person",
+   "person": "Alpha Kessik-9",
+   "storlek": "1024x1024",
+   "bildtext": "Alpha Kessik-9",
+   "prompt": "Portrait of a tall female cyborg soldier commander, body mostly machine, rust-red hooded mantle edged with brass, grille-shaped helmet with softly glowing green lenses, a long radium rifle cradled in her arm, a thin antenna rising from her spine. Standing in a vast gothic metal hangar with hanging censers."
+  },
+  {
+   "id": "person-sethrakh",
+   "plats": "person",
+   "person": "Sethrakh, Herre över de sju stillheterna",
+   "storlek": "1024x1024",
+   "bildtext": "Sethrakh, Herre över de sju stillheterna",
+   "prompt": "Portrait of an ancient skeletal robotic king of silver metal sleeping upright on a throne in a dark stasis tomb, elegant skull-like metal face, ornate headdress and cloak, faint green light in its empty eye sockets just beginning to glow. Rows of identical dormant metal warriors fade into the darkness behind."
+  },
+  {
+   "id": "k1-kapellet",
+   "plats": "kapitel",
+   "kapitel": 1,
+   "efter": "Framför honom, i en nisch",
+   "bildtext": "Ivar knäböjer framför Primarkens staty i kapellet på däck nio.",
+   "prompt": "Interior of a small gothic chapel aboard a starship. A giant warrior in blue power armor kneels, his helmet by his right knee, before a one-meter marble statue of a noble armored lord with one hand on his sword hilt and the other raised as if about to speak, standing in a niche of blue-veined marble. An old book rests in a niche. Candlelight, quiet reverent mood."
+  },
+  {
+   "id": "k1-lex-perpetua",
+   "plats": "kapitel",
+   "kapitel": 1,
+   "efter": "Hon var nästan sex kilometer lång",
+   "bildtext": "Lex Perpetua – ett tempel som lärt sig flyga.",
+   "prompt": "A six-kilometer-long gothic cathedral-like starship of dark metal floating in space, hull covered in antennas, sensor domes and star-shaped dish mirrors, rows of chimneys along its spine venting incense into the void, a giant half-skull half-machine cog emblem carved into its prow. A small angular gunship approaches it. Distant nebula."
+  },
+  {
+   "id": "k1-kuriosakammaren",
+   "plats": "kapitel",
+   "kapitel": 1,
+   "efter": "Gestalten vid orgeln var lång",
+   "bildtext": "Kuriosakammaren: archmagosen spelar orgel med fyra mekaniska armar.",
+   "prompt": "A round, tall chamber like a cathedral nave, walls lined floor to ceiling with shelves of strange alien artifacts: elongated inhuman skulls, weapons of bone and light, pulsing crystals in stasis fields, broken clocks. In the center, under a stained-glass dome with a red and gold cogwheel, a tall thin tech-priest in a patched red robe plays a great pipe organ with his hands and four spider-like mechanical arms. A brass birdcage with a yellow canary sits on the organ."
+  },
+  {
+   "id": "k1-handen",
+   "plats": "kapitel",
+   "kapitel": 1,
+   "efter": "Den var gjord av silvermetall",
+   "bildtext": "Handen i stasisfältet. Den försöker kräla hem.",
+   "prompt": "Close-up of a glass container the size of a large shell casing, holding a long skeletal hand of silver metal floating in a faint shimmering stasis field. Exquisitely fine joints that look grown rather than forged, fingers curled like claws, one finger slightly moving. Reflections of warm candle light and a hint of eerie green."
+  },
+  {
+   "id": "k1-planeten",
+   "plats": "kapitel",
+   "kapitel": 1,
+   "efter": "Det var en enda punkt först",
+   "bildtext": "Varanthis Tertius öppnar ett öga.",
+   "prompt": "View through a transparent dome from orbit: a sick, cracked pale grey-brown planet with no clouds and no oceans, its surface an endless field of melted glass. On its night side a network of toxic green lights blazes in perfectly straight lines and right angles, geometric like a circuit board, casting green shadows. Silhouettes of armored figures and a tall robed priest watch from inside."
+  },
+  {
+   "id": "k2-landning",
+   "plats": "kapitel",
+   "kapitel": 2,
+   "efter": "Glasöknen sträckte sig åt alla håll",
+   "bildtext": "Glasöknen: frusna vågor av glas i ett sjukt orange ljus.",
+   "prompt": "A vast landscape of frozen waves of glass ten to twenty meters high, as if a sea of fire had cooled in an instant, with valleys of black sand between them. A dying sun hangs low on the horizon, bathing everything in a sickly orange light. A blocky military gunship descends through the thin atmosphere."
+  },
+  {
+   "id": "k2-pylonen",
+   "plats": "kapitel",
+   "kapitel": 2,
+   "efter": "Det var ett torn. Eller en obelisk.",
+   "bildtext": "Gausspylonerna sover. De vaknar för allt som flyger.",
+   "prompt": "A black obelisk at least fifty meters tall on the crest of a glass dune, edges unnaturally straight, tapering to a metal-clad tip glinting in the sunset, its sides deeply carved with circles, lines and eye-like glyphs. In the distance more obelisks form a ring around a crater. Tiny figures of a marching column of red-cloaked cyborg soldiers and blue-armored warriors in the foreground."
+  },
+  {
+   "id": "k2-de-dode",
+   "plats": "kapitel",
+   "kapitel": 2,
+   "efter": "Skitarii. Teknopräster. Servitorer.",
+   "bildtext": "De döda i glaset, bevarade som insekter i bärnsten.",
+   "prompt": "Looking down into grey cloudy glass full of bubbles and cracks: bodies of cyborg soldiers and robed tech-priests frozen at different depths like insects in amber, faded pink robes and dull metal, one hand in a metal gauntlet reaching up toward the surface. Near the surface lies a young woman tech-priest with half her face metal, eyes closed. Above, the reflection of a tall old priest looking down in grief."
+  },
+  {
+   "id": "k2-skarabeerna",
+   "plats": "kapitel",
+   "kapitel": 2,
+   "efter": "På sidan av en glasvåg",
+   "bildtext": "Canoptek-skarabéerna lagar glaset.",
+   "prompt": "Hundreds of small hand-sized beetle-like machines of black and silver metal with ribbed carapaces and tiny green glowing eyes, swarming like flowing water up the side of a glass dune in the last orange light, sealing a diagonal crack in the glass as they pass. Armored warriors and red-cloaked soldiers stand frozen and watch from the foreground, one weapon glowing blue."
+  },
+  {
+   "id": "k2-sjunker",
+   "plats": "kapitel",
+   "kapitel": 2,
+   "efter": "Det var en hög, ren ton",
+   "bildtext": "Glaset börjar sjunga.",
+   "prompt": "A red-cloaked cyborg soldier sinking up to his waist into a circle of glass that has turned glossy and liquid, ripples spreading outward from him, two comrades gripping his arms and pulling. In the background a giant blue-armored warrior lunges forward but is held back by a mechanical spider-arm of a tall robed priest. Dusk sky with first stars."
+  },
+  {
+   "id": "k2-kratern",
+   "plats": "kapitel",
+   "kapitel": 2,
+   "efter": "Ivar stod vid kanten och tittade ner",
+   "bildtext": "Graven väntar i kraterns botten.",
+   "prompt": "Night. A huge crater two kilometers wide with mirror-smooth black stone walls. At its bottom, a half-buried pyramid with perfectly smooth sides that seem to swallow starlight, faint green light seeping from lines on its surface. Black obelisks stand silhouetted around the crater rim against a cold sparse starfield. A small armored figure stands at the rim looking down."
+  },
+  {
+   "id": "k2-spaket",
+   "plats": "kapitel",
+   "kapitel": 2,
+   "efter": "Det var en fot.",
+   "bildtext": "Avtrycket var färskt.",
+   "prompt": "Close-up at night of a fresh footprint in black sand at the edge where stone meets glass: long and narrow with three claw-like toes and a rear spur, sharp-edged, made by something heavy walking upright. More prints curve away along the crater rim into darkness toward a faint green glow far below. A gauntleted armored hand reaches into frame. Ominous mood."
+  }
+ ]
+}

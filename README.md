@@ -4,6 +4,28 @@ Ett mysigt 3D-kubspel för barn (5–7 år). Hugg träd, plantera nya, bygg möb
 och få nya djurvänner som flyttar in och önskar sig saker. Spelas i webbläsaren på iPad,
 mobil och dator, ensam eller tillsammans på samma wifi.
 
+## Boken: De sovande kungarnas värld
+
+En läsapp för romanen ligger i `public/bok/` och publiceras på
+https://headswe.github.io/literate-umbrella/bok/ tillsammans med spelet. Omslag, innehåll,
+personer med porträtt, kapitel med bilder, tre teman (natt, pergament, dag), textstorlek,
+uppläsning på svenska (▶) och appen minns var man slutade läsa.
+
+- `public/bok/bok.json` – texten (titel, personer, kapitelplan och de skrivna kapitlen)
+- `public/bok/bilder.json` – varje bild: var den hör hemma, bildtext och prompten till GPT
+- `public/bok/bilder/` – de färdiga bilderna (`<id>.webp`). Saknas en bild visas en platshållare.
+
+**Rita bilderna med GPT** (OpenAI:s `gpt-image-1`):
+
+- På GitHub: lägg din nyckel som hemlighet `OPENAI_API_KEY` (Settings → Secrets and variables →
+  Actions) och kör **Bokens bilder** under Actions. Bilderna som saknas ritas och committas.
+  Skriv id:n (t.ex. `omslag k1-handen`) för att rita om dem.
+- På datorn: `OPENAI_API_KEY=sk-... npm run bok:bilder` (eller `npm run bok:bilder -- omslag`).
+  `OPENAI_IMAGE_QUALITY=high` ger finare bilder.
+
+Nytt kapitel: lägg till det i `kapitel` i `bok.json` och nya bilder i `bilder.json`
+(`efter` är början på stycket som bilden ska stå efter).
+
 ## Spela på telefonen
 
 Spelet ligger på https://headswe.github.io/literate-umbrella/ (byggs från `main`

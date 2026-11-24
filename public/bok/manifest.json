@@ -1,0 +1,10 @@
+{
+  "name": "De sovande kungarnas värld",
+  "short_name": "Kungarnas värld",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d0f12",
+  "theme_color": "#0d0f12",
+  "icons": [{ "src": "ikon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
