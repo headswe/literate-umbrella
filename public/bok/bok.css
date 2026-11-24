@@ -1,220 +1,205 @@
+/* A book of paper pages laid one under the other on a dark desk; scroll down to read. */
 :root, :root[data-tema="natt"] {
-  --bg: #0d0f12;
-  --yta: #161a20;
+  --bord: #0a0b0d;
+  --papper: #17191d;
   --text: #ddd6c8;
-  --dampad: #8f8a80;
+  --dampad: #8b867c;
   --guld: #c9a227;
   --gron: #3ddc84;
-  --linje: #2a2f37;
-  --citat: #b9b2a4;
-  --skugga: rgba(0, 0, 0, .55);
+  --linje: #2c3038;
+  --skugga: rgba(0, 0, 0, .6);
+  color-scheme: dark;
 }
 :root[data-tema="pergament"] {
-  --bg: #efe4cc;
-  --yta: #e5d7b8;
+  --bord: #5a4a35;
+  --papper: #f1e6cd;
   --text: #2c241a;
-  --dampad: #6f6250;
+  --dampad: #74664f;
   --guld: #8a5f12;
   --gron: #2f7d4f;
-  --linje: #cdbb96;
-  --citat: #4a3d2c;
-  --skugga: rgba(60, 40, 10, .25);
+  --linje: #d4c29c;
+  --skugga: rgba(30, 18, 5, .45);
+  color-scheme: light;
 }
 :root[data-tema="dag"] {
-  --bg: #fbfaf7;
-  --yta: #f0ede6;
+  --bord: #d9d6cf;
+  --papper: #fffdf9;
   --text: #1c1d20;
-  --dampad: #67676c;
+  --dampad: #6a6a6f;
   --guld: #8a6a10;
   --gron: #247a4a;
-  --linje: #dedad0;
-  --citat: #333;
-  --skugga: rgba(0, 0, 0, .15);
+  --linje: #e2ded4;
+  --skugga: rgba(0, 0, 0, .18);
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
-body::before { content: ''; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
-html { --storlek: 20px; }
+html { --storlek: 18px; }
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--bord);
   color: var(--text);
   font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
-  font-size: var(--storlek);
-  line-height: 1.6;
   -webkit-text-size-adjust: 100%;
-  transition: background .3s, color .3s;
+  transition: background .3s;
+}
+body::before {
+  content: ''; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
+  z-index: 10; background: var(--bord);
 }
 a { color: var(--guld); }
 button { font: inherit; color: inherit; }
 img { max-width: 100%; display: block; }
 main:focus { outline: none; }
+.laddar { text-align: center; color: var(--dampad); padding: 40vh 16px; margin: 0; font-style: italic; }
 
 /* ---------- top bar */
 .bar {
   position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10;
-  display: flex; align-items: center; gap: 4px;
-  padding: 6px max(10px, env(safe-area-inset-left, 0px)) 6px max(10px, env(safe-area-inset-right, 0px));
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--linje);
-  font-size: 16px;
+  display: flex; align-items: center; gap: 2px;
+  padding: 6px max(8px, env(safe-area-inset-right, 0px)) 6px max(8px, env(safe-area-inset-left, 0px));
+  background: color-mix(in srgb, var(--bord) 90%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  font-size: 16px; color: var(--text);
 }
+:root[data-tema="pergament"] .bar { color: #f1e6cd; }
 .bar-titel {
-  flex: 1; min-width: 0;
-  font-family: Cinzel, serif; letter-spacing: .06em; font-size: 13px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  text-align: center; color: var(--dampad);
+  flex: 1; min-width: 0; text-align: center;
+  font-family: Cinzel, serif; letter-spacing: .06em; font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .75;
 }
+.bar-sida { font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
 .bar-btn {
   min-width: 40px; height: 40px; border: 0; border-radius: 10px;
-  background: transparent; color: var(--text); text-decoration: none;
+  background: transparent; color: inherit; text-decoration: none;
   display: grid; place-items: center; cursor: pointer; font-size: 18px;
 }
 .bar-btn[hidden] { display: none; }
-.bar-btn:hover { background: var(--yta); }
+.bar-btn:hover, .bar-btn:focus-visible { background: color-mix(in srgb, currentColor 12%, transparent); }
 .bar-btn[aria-pressed="true"] { color: var(--gron); }
-.framsteg {
-  position: absolute; left: 0; bottom: -1px; height: 2px; width: 0;
-  background: var(--guld); transition: width .15s;
-}
+.framsteg { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--guld); }
 
 .installningar {
-  position: fixed; z-index: 11; right: 10px; top: calc(env(safe-area-inset-top, 0px) + 56px);
-  background: var(--yta); border: 1px solid var(--linje); border-radius: 14px;
+  position: fixed; z-index: 11; right: max(10px, env(safe-area-inset-right, 0px));
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  background: var(--papper); border: 1px solid var(--linje); border-radius: 14px;
   padding: 12px 14px; box-shadow: 0 12px 30px var(--skugga); font-size: 16px;
 }
 .installningar .rad { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .installningar .rad span { width: 96px; color: var(--dampad); }
 .installningar button {
-  border: 1px solid var(--linje); background: var(--bg); border-radius: 8px;
-  padding: 6px 10px; cursor: pointer;
+  border: 1px solid var(--linje); background: var(--bord); color: var(--text);
+  border-radius: 8px; padding: 6px 10px; cursor: pointer;
 }
+:root[data-tema="pergament"] .installningar button { background: var(--papper); }
 .installningar button.vald { border-color: var(--guld); color: var(--guld); }
 
-/* ---------- cover */
-.omslag { max-width: 760px; margin: 0 auto; padding: 0 16px 60px; }
-.omslag-bild {
-  position: relative; margin: 0 -16px; aspect-ratio: 2 / 3; max-height: 78vh; overflow: hidden;
+/* ---------- the pages */
+#bok {
+  display: flex; flex-direction: column; align-items: center; gap: 22px;
+  padding: 18px max(16px, env(safe-area-inset-right, 0px)) 60px max(16px, env(safe-area-inset-left, 0px));
 }
-.omslag-bild .bild, .omslag-bild .platshallare { width: 100%; height: 100%; object-fit: cover; }
-.omslag-bild::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(to bottom, transparent 45%, var(--bg) 98%);
-  pointer-events: none;
+.sida {
+  position: relative; flex: none;
+  width: var(--sw); height: var(--sh);
+  background: var(--papper); color: var(--text);
+  box-shadow: 0 1px 2px var(--skugga), 0 14px 40px var(--skugga);
+  border-radius: 2px;
+  font-size: var(--storlek); line-height: 1.5;
+  overflow: hidden;
+  scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 64px);
 }
-.omslag-titel {
-  position: relative; z-index: 1; margin-top: -150px; text-align: center;
+/* a faint spine shadow on alternate sides, like a book lying open */
+.sida::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 18px; pointer-events: none;
+  background: linear-gradient(to right, rgba(0, 0, 0, .12), transparent);
+  left: 0;
 }
-.omslag h1 {
-  font-family: Cinzel, serif; font-weight: 700; letter-spacing: .04em;
-  font-size: clamp(30px, 7vw, 52px); line-height: 1.15; margin: 0 0 8px;
-  color: var(--text); text-shadow: 0 2px 18px var(--skugga);
-}
-.omslag .under { font-style: italic; color: var(--dampad); margin: 0; }
-.omslag .forfattare {
-  font-family: Cinzel, serif; letter-spacing: .3em; text-transform: uppercase;
-  font-size: 13px; color: var(--guld); margin: 18px 0 26px;
-}
-.knappar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-.knapp {
-  display: inline-block; padding: 12px 22px; border-radius: 999px; text-decoration: none;
-  font-family: Cinzel, serif; letter-spacing: .08em; font-size: 15px;
-  border: 1px solid var(--guld); color: var(--guld); background: transparent; cursor: pointer;
-}
-.knapp.primar { background: var(--guld); color: var(--bg); }
-.sammanfattning { margin: 36px auto 0; max-width: 620px; font-size: 1.05em; }
+.sida.vanster::after { left: auto; right: 0; background: linear-gradient(to left, rgba(0, 0, 0, .12), transparent); }
+.sida.naken::after { display: none; }
 
-/* ---------- lists */
-.sida { max-width: 760px; margin: 0 auto; padding: 28px 16px 80px; }
-.sida h2 {
-  font-family: Cinzel, serif; font-weight: 500; letter-spacing: .08em; text-align: center;
-  font-size: 1.3em; margin: 10px 0 26px; color: var(--guld);
+.huvud, .fot {
+  position: absolute; left: var(--marg); right: var(--marg);
+  font-family: Cinzel, serif; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--dampad); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.innehall { list-style: none; padding: 0; margin: 0; }
-.innehall li { border-bottom: 1px solid var(--linje); }
-.innehall a, .innehall .kommer {
-  display: grid; grid-template-columns: 44px 1fr auto; gap: 4px 12px; align-items: baseline;
-  padding: 14px 4px; text-decoration: none; color: var(--text);
-}
-.innehall .nr { font-family: Cinzel, serif; color: var(--guld); font-size: .9em; }
-.innehall .t { font-family: Cinzel, serif; font-size: .95em; letter-spacing: .03em; }
-.innehall .om { grid-column: 2 / 4; color: var(--dampad); font-size: .85em; line-height: 1.45; }
-.innehall .etikett { font-size: .7em; color: var(--dampad); font-family: system-ui, sans-serif; }
-.innehall .etikett.last { color: var(--gron); }
-.innehall .kommer { opacity: .5; }
-.innehall a:hover .t { color: var(--guld); }
-
-.personer { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; }
-.person { background: var(--yta); border: 1px solid var(--linje); border-radius: 14px; overflow: hidden; }
-.person .bild, .person .platshallare { aspect-ratio: 1; width: 100%; object-fit: cover; cursor: zoom-in; }
-.person .platshallare { min-height: 0; }
-.person h3 { font-family: Cinzel, serif; font-weight: 500; font-size: .85em; letter-spacing: .04em; margin: 12px 14px 4px; }
-.person p { margin: 0 14px 14px; color: var(--dampad); font-size: .85em; line-height: 1.45; }
-.person.liten { display: flex; align-items: center; }
-.person.liten h3, .person.liten p { margin-left: 14px; }
-
-/* ---------- reader */
-.kapitel { max-width: 680px; margin: 0 auto; padding: 36px 20px 40px; }
-.kapitel header { text-align: center; margin-bottom: 36px; }
-.kapitel .kapnr {
-  font-family: Cinzel, serif; letter-spacing: .3em; text-transform: uppercase;
-  font-size: 13px; color: var(--guld);
-}
-.kapitel h1 {
-  font-family: Cinzel, serif; font-weight: 500; letter-spacing: .04em;
-  font-size: clamp(26px, 6vw, 40px); margin: 8px 0 10px; line-height: 1.2;
-}
-.kapitel .plats { font-style: italic; color: var(--dampad); margin: 0; font-size: .9em; }
-.kapitel .ornament { color: var(--guld); margin: 18px 0 0; letter-spacing: .6em; }
-.text p { margin: 0; text-indent: 1.4em; hyphens: auto; -webkit-hyphens: auto; }
-.text p.forsta { text-indent: 0; }
-.text p.forsta::first-letter {
-  font-family: Cinzel, serif; float: left; font-size: 3.4em; line-height: .85;
-  padding: 6px 8px 0 0; color: var(--guld);
-}
-.text p.replik { text-indent: 0; margin-top: .35em; }
-.text p.kort { text-indent: 0; margin-top: .9em; margin-bottom: .2em; }
-.text p.laser { background: color-mix(in srgb, var(--guld) 18%, transparent); border-radius: 4px; }
-
-figure.illustration { margin: 34px -20px; }
-figure.illustration .bild, figure.illustration .platshallare {
-  width: 100%; aspect-ratio: 3 / 2; object-fit: cover; cursor: zoom-in;
-}
-figure.illustration figcaption {
-  font-style: italic; color: var(--dampad); text-align: center; font-size: .82em;
-  padding: 10px 20px 0; line-height: 1.4;
-}
-@media (min-width: 760px) {
-  figure.illustration { margin: 40px -60px; }
-  figure.illustration .bild, figure.illustration .platshallare { border-radius: 6px; }
+.huvud { top: calc(var(--marg) * .45); }
+.fot { bottom: calc(var(--marg) * .45); font-family: 'EB Garamond', Georgia, serif; font-size: 13px; letter-spacing: .05em; }
+.kropp {
+  position: absolute; left: var(--marg); right: var(--marg);
+  top: calc(var(--marg) * 1.05); bottom: calc(var(--marg) * 1.05);
+  overflow: hidden;
 }
 
-.platshallare {
-  display: grid; place-items: center; text-align: center; padding: 20px;
-  background:
-    radial-gradient(ellipse at 50% 120%, color-mix(in srgb, var(--gron) 30%, transparent), transparent 60%),
-    linear-gradient(160deg, #1d222a, #07080a);
-  color: #b8b2a6; min-height: 200px;
+.kropp p { margin: 0; text-indent: 1.3em; text-align: justify; hyphens: auto; -webkit-hyphens: auto; }
+.kropp p.forsta, .kropp p.fortsatt, .kropp p.kort, .kropp p.replik { text-indent: 0; }
+.kropp p.replik { text-indent: 0; }
+.kropp p.kort { margin-top: .6em; }
+.kropp p.delad { text-align-last: justify; }
+.kropp p.forsta::first-letter {
+  font-family: Cinzel, serif; float: left; font-size: 3.3em; line-height: .82;
+  padding: 5px 7px 0 0; color: var(--guld);
 }
-.platshallare span { font-size: 14px; font-family: system-ui, sans-serif; opacity: .65; max-width: 30ch; }
-.platshallare b { display: block; font-size: 32px; color: #3ddc84; opacity: .7; margin-bottom: 6px; font-weight: 400; }
+.kropp p.laser { background: color-mix(in srgb, var(--guld) 22%, transparent); }
 
-.slut { text-align: center; margin: 46px 0 10px; }
-.slut .ornament { color: var(--guld); letter-spacing: .6em; }
-.slut p { font-style: italic; color: var(--dampad); }
-.nav-kapitel {
-  display: flex; gap: 12px; justify-content: space-between; max-width: 680px;
-  margin: 0 auto; padding: 0 20px 70px;
+.kapitelhuvud { text-align: center; padding-top: 18%; margin-bottom: 2.2em; }
+.kapitelhuvud .kapnr { font-family: Cinzel, serif; letter-spacing: .32em; text-transform: uppercase; font-size: .62em; color: var(--guld); }
+.kapitelhuvud h2 { font-family: Cinzel, serif; font-weight: 500; font-size: 1.6em; line-height: 1.2; margin: .35em 0 .4em; text-wrap: balance; }
+.kapitelhuvud .plats { font-style: italic; color: var(--dampad); font-size: .85em; margin: 0; text-indent: 0; text-align: center; }
+.ornament { color: var(--guld); letter-spacing: .6em; text-align: center; font-size: .8em; margin-top: 1em; }
+
+figure.illustration { margin: .9em 0; }
+figure.illustration img {
+  width: 100%; aspect-ratio: 3 / 2; object-fit: cover; cursor: zoom-in; border-radius: 1px;
+  background: var(--linje);
 }
-.nav-kapitel a {
-  flex: 1; border: 1px solid var(--linje); border-radius: 14px; padding: 14px 16px;
-  text-decoration: none; color: var(--text); font-size: .85em;
+figure.illustration figcaption { font-style: italic; color: var(--dampad); text-align: center; font-size: .78em; line-height: 1.35; padding-top: .45em; }
+
+.slut { text-align: center; margin-top: 1.4em; }
+.slut p { text-indent: 0; text-align: center; font-style: italic; color: var(--dampad); }
+
+/* cover */
+.omslag img { width: 100%; height: 100%; object-fit: cover; }
+.omslag .titel {
+  position: absolute; inset: 0 0 auto; padding: 9% 8% 0; text-align: center;
+  color: #f3ead6; text-shadow: 0 2px 14px rgba(0, 0, 0, .7);
 }
-.nav-kapitel a small { display: block; color: var(--dampad); font-family: system-ui, sans-serif; font-size: 12px; }
-.nav-kapitel a.nasta { text-align: right; }
-.nav-kapitel a:hover { border-color: var(--guld); }
+.omslag h1 { font-family: Cinzel, serif; font-weight: 700; font-size: calc(var(--sw) * .085); line-height: 1.12; margin: 0; letter-spacing: .03em; text-wrap: balance; }
+.omslag .forf {
+  position: absolute; left: 0; right: 0; bottom: 5%; text-align: center; color: #f3ead6;
+  font-family: Cinzel, serif; letter-spacing: .4em; font-size: calc(var(--sw) * .03); text-shadow: 0 2px 10px #000;
+}
+.omslag .under { font-style: italic; font-size: calc(var(--sw) * .036); margin: .5em 0 0; opacity: .9; }
+.omslag::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, .55), transparent 35%, transparent 80%, rgba(0, 0, 0, .55));
+}
+
+/* title page */
+.titelsida .kropp { display: flex; flex-direction: column; justify-content: center; text-align: center; }
+.titelsida h1 { font-family: Cinzel, serif; font-weight: 500; font-size: 1.7em; line-height: 1.2; margin: 0 0 .4em; text-wrap: balance; }
+.titelsida .under { font-style: italic; color: var(--dampad); margin: 0; }
+.titelsida .forf { font-family: Cinzel, serif; letter-spacing: .3em; text-transform: uppercase; font-size: .7em; color: var(--guld); margin-top: 3em; }
+.titelsida .utgava { position: absolute; bottom: 0; left: 0; right: 0; font-size: .7em; color: var(--dampad); }
+
+/* front matter */
+.kropp h2.sektion { font-family: Cinzel, serif; font-weight: 500; font-size: 1.05em; letter-spacing: .1em; color: var(--guld); text-align: center; margin: .4em 0 1em; }
+.kropp h3.sektion { font-family: Cinzel, serif; font-weight: 500; font-size: .8em; letter-spacing: .12em; text-transform: uppercase; color: var(--dampad); text-align: center; margin: 1.4em 0 .7em; }
+.person { display: flex; gap: .7em; align-items: flex-start; margin: 0 0 .7em; font-size: .88em; line-height: 1.35; }
+.person img, .person .ingen-bild { flex: none; width: 3.4em; height: 3.4em; border-radius: 50%; object-fit: cover; cursor: zoom-in; }
+.person .ingen-bild { border: 1px solid var(--linje); display: grid; place-items: center; color: var(--guld); font-family: Cinzel, serif; cursor: default; }
+.person b { font-family: Cinzel, serif; font-weight: 500; font-size: .85em; letter-spacing: .04em; display: block; }
+.person span { color: var(--dampad); }
+
+.innehall-lista { list-style: none; margin: 0; padding: 0; font-size: .9em; }
+.innehall-lista li { display: flex; align-items: baseline; gap: .5em; margin: 0 0 .55em; }
+.innehall-lista .nr { font-family: Cinzel, serif; color: var(--guld); width: 2.2em; flex: none; font-size: .85em; }
+.innehall-lista a, .innehall-lista .t { color: var(--text); text-decoration: none; }
+.innehall-lista a:hover { color: var(--guld); }
+.innehall-lista .prickar { flex: 1; border-bottom: 1px dotted var(--dampad); opacity: .6; transform: translateY(-.3em); }
+.innehall-lista .sid { font-variant-numeric: tabular-nums; color: var(--dampad); }
+.innehall-lista li.kommer { opacity: .45; }
+.innehall-lista li.kommer .sid { font-style: italic; }
 
 /* ---------- lightbox */
 .ljuslada {
@@ -226,8 +211,4 @@ figure.illustration figcaption {
 .ljuslada img { max-height: 84vh; object-fit: contain; border-radius: 4px; }
 .ljuslada p { color: #ccc; font-style: italic; text-align: center; max-width: 60ch; }
 
-.bottenmeny {
-  display: flex; justify-content: center; gap: 22px; margin: 30px 0 0;
-  font-family: Cinzel, serif; font-size: 14px; letter-spacing: .08em;
-}
-.bottenmeny a { text-decoration: none; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

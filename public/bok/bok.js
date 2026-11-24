@@ -1,9 +1,11 @@
-// Reader for "De sovande kungarnas värld". Text in bok.json, pictures listed in bilder.json
-// and drawn with GPT by scripts/book-images.mjs into bilder/<id>.jpg.
+// "De sovande kungarnas värld" as a book of real pages, one under the other: scroll down to read.
+// Text in bok.json; pictures listed in bilder.json and drawn with GPT by scripts/book-images.mjs.
+// The text is laid out page by page in the browser, so it re-flows when the text size or width changes.
 const [bok, { bilder }] = await Promise.all(['bok.json', 'bilder.json'].map((f) => fetch(f).then((r) => r.json())));
 
-const app = document.getElementById('app');
+const bokEl = document.getElementById('bok');
 const barTitel = document.getElementById('bar-titel');
+const barSida = document.getElementById('bar-sida');
 const framsteg = document.getElementById('framsteg');
 const lasUppKnapp = document.getElementById('las-upp');
 const panel = document.getElementById('installningar');
@@ -13,27 +15,30 @@ const ljuslada = document.getElementById('ljuslada');
 const lagrat = (k, d) => { try { return JSON.parse(localStorage.getItem('bok:' + k)) ?? d; } catch { return d; } };
 const spara = (k, v) => { try { localStorage.setItem('bok:' + k, JSON.stringify(v)); } catch { /* private mode */ } };
 
-let storlek = lagrat('storlek', 20);
 const ljust = document.documentElement.dataset.theme === 'light'
   || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: light)').matches);
 let tema = lagrat('tema', ljust ? 'dag' : 'natt');
-function tillampa() {
-  document.documentElement.style.setProperty('--storlek', storlek + 'px');
+let storlek = lagrat('sidstorlek', innerWidth < 520 ? 16 : 18);
+
+function tillampaTema() {
   document.documentElement.dataset.tema = tema;
   document.documentElement.style.colorScheme = tema === 'natt' ? 'dark' : 'light';
-  document.querySelector('meta[name=theme-color]').content = getComputedStyle(document.body).backgroundColor;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', getComputedStyle(document.body).backgroundColor);
   panel.querySelectorAll('[data-tema]').forEach((b) => b.classList.toggle('vald', b.dataset.tema === tema));
 }
-tillampa();
+tillampaTema();
 
 document.getElementById('installningar-knapp').onclick = (e) => { e.stopPropagation(); panel.hidden = !panel.hidden; };
 document.addEventListener('click', (e) => { if (!panel.contains(e.target)) panel.hidden = true; });
 panel.onclick = (e) => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.storlek) storlek = Math.min(30, Math.max(15, storlek + Number(b.dataset.storlek) * 2));
-  if (b.dataset.tema) tema = b.dataset.tema;
-  spara('storlek', storlek); spara('tema', tema); tillampa();
+  if (b.dataset.tema) { tema = b.dataset.tema; spara('tema', tema); tillampaTema(); }
+  if (b.dataset.storlek) {
+    storlek = Math.min(26, Math.max(13, storlek + Number(b.dataset.storlek)));
+    spara('sidstorlek', storlek);
+    paginera(platsNu());
+  }
 };
 
 // ---------------------------------------------------------------- helpers
@@ -46,145 +51,233 @@ const el = (tag, attrs = {}, ...barn) => {
   n.append(...barn.flat().filter((b) => b != null));
   return n;
 };
-
 const ROMERSKA = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 const ORD = ['noll', 'ett', 'två', 'tre', 'fyra', 'fem', 'sex', 'sju', 'åtta', 'nio', 'tio', 'elva', 'tolv'];
+const bildSrc = (b) => `bilder/${b.id}.jpg`;
 
-// A GPT picture, or a quiet placeholder until scripts/book-images.mjs has drawn it.
-function bild(b, klass = 'bild') {
-  const ph = () => el('div', { class: 'platshallare', role: 'img', 'aria-label': b.bildtext },
-    el('div', {}, el('b', {}, '◬'), el('span', {}, b.plats === 'kapitel' ? 'Bilden är inte ritad än' : b.bildtext)));
-  const img = el('img', { class: klass, src: `bilder/${b.id}.jpg`, alt: b.bildtext, loading: b.plats === 'omslag' ? 'eager' : 'lazy', decoding: 'async' });
-  img.addEventListener('error', () => img.replaceWith(ph()));
+function bild(b, attrs = {}) {
+  const img = el('img', { src: bildSrc(b), alt: b.bildtext, decoding: 'async', ...attrs });
   img.addEventListener('click', () => visa(b));
   return img;
 }
 function visa(b) {
-  ljuslada.querySelector('img').src = `bilder/${b.id}.jpg`;
+  ljuslada.querySelector('img').src = bildSrc(b);
   ljuslada.querySelector('p').textContent = b.bildtext;
   ljuslada.hidden = false;
 }
 ljuslada.onclick = () => { ljuslada.hidden = true; };
 
-const senast = () => lagrat('senast', null);
+// Every block that starts a reading position gets an id (data-b), so a place in the book
+// survives re-flowing the pages.
+function block(id, node) { node.dataset.b = id; return node; }
 
-// ---------------------------------------------------------------- views
-function omslag() {
-  const s = senast();
-  const omslagsbild = bilder.find((b) => b.plats === 'omslag');
-  barTitel.textContent = '';
-  return el('section', { class: 'omslag' },
-    el('div', { class: 'omslag-bild' }, bild(omslagsbild)),
-    el('div', { class: 'omslag-titel' },
-      el('h1', {}, bok.titel),
-      el('p', { class: 'under' }, bok.undertitel),
-      el('p', { class: 'forfattare' }, bok.forfattare),
-      el('div', { class: 'knappar' },
-        s && s.kapitel
-          ? el('a', { class: 'knapp primar', href: `#kapitel-${s.kapitel}` }, `Fortsätt · kapitel ${s.kapitel}`)
-          : el('a', { class: 'knapp primar', href: '#kapitel-1' }, 'Börja läsa'),
-        el('a', { class: 'knapp', href: '#innehall' }, 'Innehåll'),
-        el('a', { class: 'knapp', href: '#personer' }, 'Personer'),
-      ),
-    ),
-    el('p', { class: 'sammanfattning' }, bok.sammanfattning),
-  );
+// ---------------------------------------------------------------- pagination
+let ankare = {};       // 'start', 'innehall', 'personer', 'kapitel-1' … → page element
+let sidor = [];
+
+function sidmatt() {
+  const w = Math.min(document.documentElement.clientWidth - 32, 600);
+  return { w, h: Math.round(w * 1.5), marg: Math.round(w * 0.1) };
 }
 
-function innehall() {
-  barTitel.textContent = 'Innehåll';
-  const lasta = lagrat('lasta', {});
-  return el('section', { class: 'sida' },
-    el('h2', {}, 'Innehåll'),
-    el('ol', { class: 'innehall' }, bok.kapitelplan.map((k, i) => {
-      const n = i + 1;
-      const finns = bok.kapitel.some((c) => c.nummer === n);
-      const delar = [
-        el('span', { class: 'nr' }, ROMERSKA[n] || n),
-        el('span', { class: 't' }, k.titel),
-        el('span', { class: 'etikett' + (lasta[n] ? ' last' : '') }, finns ? (lasta[n] ? 'Läst ✓' : '') : 'Kommer'),
-        el('span', { class: 'om' }, k.om),
-      ];
-      return el('li', {}, finns ? el('a', { href: `#kapitel-${n}` }, delar) : el('div', { class: 'kommer' }, delar));
-    })),
-    el('nav', { class: 'bottenmeny' }, el('a', { href: '#start' }, 'Omslaget'), el('a', { href: '#personer' }, 'Personer')),
-  );
-}
+function paginera(behall) {
+  stoppaLasning();
+  const { w, h, marg } = sidmatt();
+  bokEl.style.setProperty('--sw', w + 'px');
+  bokEl.style.setProperty('--sh', h + 'px');
+  bokEl.style.setProperty('--marg', marg + 'px');
+  document.documentElement.style.setProperty('--storlek', storlek + 'px');
+  bokEl.replaceChildren();
+  ankare = {};
+  sidor = [];
 
-function personer() {
-  barTitel.textContent = 'Personer';
-  return el('section', { class: 'sida' },
-    el('h2', {}, 'Huvudpersoner'),
-    el('div', { class: 'personer' }, bok.personer.map((p) => {
-      const b = bilder.find((x) => x.plats === 'person' && x.person === p.namn);
-      return el('article', { class: 'person' }, b && bild(b), el('h3', {}, p.namn), el('p', {}, p.om));
-    })),
-    el('nav', { class: 'bottenmeny' }, el('a', { href: '#start' }, 'Omslaget'), el('a', { href: '#innehall' }, 'Innehåll')),
-  );
-}
+  let nr = 0;               // printed page number
+  let kropp = null;         // text box of the current page
+  let kapitel = null;       // chapter for the running head
+  let vantande = [];        // pictures that did not fit and wait for the next page
 
-function kapitel(n) {
-  const k = bok.kapitel.find((c) => c.nummer === n);
-  if (!k) return innehall();
-  barTitel.textContent = `${ROMERSKA[n]} · ${k.titel}`;
-  const figurer = bilder.filter((b) => b.plats === 'kapitel' && b.kapitel === n);
-  const text = el('div', { class: 'text' });
-  k.stycken.forEach((s, i) => {
-    const replik = s.startsWith('–');
-    const klass = i === 0 ? 'forsta' : replik ? 'replik' : s.length < 60 && !replik ? 'kort' : '';
-    text.append(el('p', { class: klass || undefined, 'data-i': i }, s));
-    for (const b of figurer.filter((f) => s.startsWith(f.efter))) {
-      text.append(el('figure', { class: 'illustration' }, bild(b), el('figcaption', {}, b.bildtext)));
+  const sida = (klass = '', { naken = false, numrerad = true } = {}) => {
+    if (numrerad) nr++;
+    const s = el('section', { class: `sida ${klass} ${nr % 2 ? 'hoger' : 'vanster'}`.trim() });
+    s.dataset.nr = numrerad ? nr : '';
+    s.dataset.kapitel = kapitel ? `${ROMERSKA[kapitel.nummer]} · ${kapitel.titel}` : '';
+    if (!naken) {
+      if (kapitel) s.append(el('div', { class: 'huvud' }, nr % 2 ? kapitel.titel : bok.titel));
+      kropp = el('div', { class: 'kropp' });
+      s.append(kropp);
+      if (numrerad) s.append(el('div', { class: 'fot' }, String(nr)));
     }
-  });
-  const forra = bok.kapitel.find((c) => c.nummer === n - 1);
-  const nasta = bok.kapitel.find((c) => c.nummer === n + 1);
-  const kommande = bok.kapitelplan[n];
-  return el('div', {},
-    el('article', { class: 'kapitel' },
-      el('header', {},
-        el('div', { class: 'kapnr' }, `Kapitel ${ORD[n] || n}`),
-        el('h1', {}, k.titel),
-        el('p', { class: 'plats' }, k.plats),
-        el('div', { class: 'ornament' }, '✦ ✦ ✦'),
-      ),
-      text,
-      el('div', { class: 'slut' }, el('div', { class: 'ornament' }, '✦'),
-        el('p', {}, nasta ? `Slut på kapitel ${ORD[n] || n}.` : kommande ? `Fortsättning följer: ${kommande.titel}.` : 'Slut.')),
-    ),
-    el('nav', { class: 'nav-kapitel' },
-      forra ? el('a', { href: `#kapitel-${forra.nummer}` }, el('small', {}, '← Förra'), forra.titel) : el('a', { href: '#start' }, el('small', {}, '←'), 'Omslaget'),
-      nasta ? el('a', { class: 'nasta', href: `#kapitel-${nasta.nummer}` }, el('small', {}, 'Nästa →'), nasta.titel)
-        : el('a', { class: 'nasta', href: '#innehall' }, el('small', {}, '→'), 'Innehåll'),
-    ),
+    bokEl.append(s);
+    sidor.push(s);
+    return s;
+  };
+  const ryms = () => kropp.scrollHeight <= kropp.clientHeight + 1;
+  const ny = () => {
+    sida();
+    const v = vantande;
+    vantande = [];
+    v.forEach((f) => lagg(f));
+  };
+  const avsluta = () => { while (vantande.length) ny(); };
+
+  // Put a block on the page; split a paragraph over two pages when it does not fit.
+  function lagg(node, delbar = false) {
+    kropp.append(node);
+    if (ryms()) return;
+    const ensam = kropp.childElementCount === 1;
+    if (node.tagName === 'FIGURE' && !ensam) { node.remove(); vantande.push(node); return; }
+    if (delbar) {
+      const ord = node.textContent.split(' ');
+      let lo = 0, hi = ord.length - 1;
+      while (lo < hi) {
+        const m = Math.ceil((lo + hi) / 2);
+        node.textContent = ord.slice(0, m).join(' ');
+        if (ryms()) lo = m; else hi = m - 1;
+      }
+      if (lo > 0) {
+        node.textContent = ord.slice(0, lo).join(' ');
+        node.classList.add('delad');
+        const rest = el('p', { class: 'fortsatt' }, ord.slice(lo).join(' '));
+        ny();
+        lagg(rest, true);
+        return;
+      }
+      node.textContent = ord.join(' ');
+    }
+    if (ensam) return; // taller than a whole page: let it be cut
+    node.remove();
+    // Do not leave a heading alone at the bottom of a page.
+    const sist = kropp.lastElementChild;
+    const rubrik = sist && /^H[23]$/.test(sist.tagName) ? sist : null;
+    rubrik?.remove();
+    ny();
+    if (rubrik) kropp.append(rubrik);
+    lagg(node, delbar);
+  }
+
+  // --- cover
+  const omslag = bilder.find((b) => b.plats === 'omslag');
+  const s0 = sida('omslag naken', { naken: true, numrerad: false });
+  s0.dataset.b = 'start';
+  ankare.start = s0;
+  s0.append(
+    bild(omslag, { loading: 'eager' }),
+    el('div', { class: 'titel' }, el('h1', {}, bok.titel), el('p', { class: 'under' }, bok.undertitel)),
+    el('div', { class: 'forf' }, bok.forfattare.toUpperCase()),
   );
+
+  // --- title page
+  sida('titelsida');
+  kropp.append(
+    el('h1', {}, bok.titel),
+    el('p', { class: 'under' }, bok.undertitel),
+    el('div', { class: 'ornament' }, '✦'),
+    el('p', { class: 'forf' }, bok.forfattare),
+    el('p', { class: 'utgava' }, `Kapitel 1–${bok.kapitel.length} av ${bok.kapitelplan.length}`),
+  );
+
+  // --- about the novel and its people
+  sida();
+  ankare.personer = sidor.at(-1);
+  lagg(el('h2', { class: 'sektion' }, 'Om romanen'));
+  lagg(block('om', el('p', { class: 'fortsatt' }, bok.sammanfattning)), true);
+  lagg(el('h3', { class: 'sektion' }, 'Huvudpersoner'));
+  bok.personer.forEach((p, i) => {
+    const b = bilder.find((x) => x.plats === 'person' && x.person === p.namn);
+    lagg(block('person-' + i, el('div', { class: 'person' },
+      b ? bild(b) : el('div', { class: 'ingen-bild', 'aria-hidden': 'true' }, p.namn[0]),
+      el('div', {}, el('b', {}, p.namn), el('span', {}, p.om)),
+    )));
+  });
+
+  // --- contents (page numbers are filled in as the chapters are laid out)
+  sida();
+  ankare.innehall = sidor.at(-1);
+  lagg(el('h2', { class: 'sektion' }, 'Innehåll'));
+  const sidnummer = {};
+  lagg(el('ol', { class: 'innehall-lista' }, bok.kapitelplan.map((k, i) => {
+    const n = i + 1;
+    const finns = bok.kapitel.some((c) => c.nummer === n);
+    const sid = el('span', { class: 'sid' }, finns ? '' : 'kommer');
+    sidnummer[n] = sid;
+    return el('li', { class: finns ? undefined : 'kommer' },
+      el('span', { class: 'nr' }, ROMERSKA[n]),
+      finns ? el('a', { href: `#kapitel-${n}` }, k.titel) : el('span', { class: 't' }, k.titel),
+      el('span', { class: 'prickar' }),
+      sid,
+    );
+  })));
+
+  // --- chapters
+  for (const k of bok.kapitel) {
+    avsluta();
+    kapitel = k;
+    sida('kapitelstart');
+    ankare['kapitel-' + k.nummer] = sidor.at(-1);
+    sidnummer[k.nummer].textContent = nr;
+    kropp.append(block(`k${k.nummer}`, el('header', { class: 'kapitelhuvud' },
+      el('div', { class: 'kapnr' }, `Kapitel ${ORD[k.nummer] || k.nummer}`),
+      el('h2', {}, k.titel),
+      el('p', { class: 'plats' }, k.plats),
+      el('div', { class: 'ornament' }, '✦ ✦ ✦'),
+    )));
+    const figurer = bilder.filter((b) => b.plats === 'kapitel' && b.kapitel === k.nummer);
+    k.stycken.forEach((s, i) => {
+      const replik = s.startsWith('–');
+      const klass = i === 0 ? 'forsta' : replik ? 'replik' : s.length < 60 ? 'kort' : undefined;
+      lagg(block(`k${k.nummer}-${i}`, el('p', { class: klass }, s)), true);
+      for (const b of figurer.filter((f) => s.startsWith(f.efter))) {
+        lagg(el('figure', { class: 'illustration' }, bild(b, { loading: 'lazy' }), el('figcaption', {}, b.bildtext)));
+      }
+    });
+    const nasta = bok.kapitel.find((c) => c.nummer === k.nummer + 1);
+    const kommande = bok.kapitelplan[k.nummer];
+    lagg(el('div', { class: 'slut' }, el('div', { class: 'ornament' }, '✦'),
+      el('p', {}, nasta ? `Slut på kapitel ${ORD[k.nummer]}.` : kommande ? `Fortsättning följer i kapitel ${ORD[k.nummer + 1]}: ${kommande.titel}.` : 'Slut.')));
+  }
+  avsluta();
+
+  if (behall) gaTill(behall, false);
+  uppdateraBar();
 }
 
-// ---------------------------------------------------------------- reading position
-let aktuelltKapitel = null;
+// ---------------------------------------------------------------- where am I
+function synligSida() {
+  const linje = innerHeight * 0.35;
+  return sidor.find((s) => s.getBoundingClientRect().bottom > linje) || sidor[0];
+}
+function platsNu() {
+  const s = synligSida();
+  if (!s) return null;
+  const b = s.dataset.b ? s : s.querySelector('[data-b]');
+  return b?.dataset.b || null;
+}
+function gaTill(namn, mjukt = true) {
+  const mal = ankare[namn] || bokEl.querySelector(`[data-b="${CSS.escape(namn)}"]`)?.closest('.sida');
+  if (!mal) return false;
+  mal.scrollIntoView({ behavior: mjukt ? 'smooth' : 'instant', block: 'start' });
+  return true;
+}
+
 let sparaTimer;
-function pagaendeProcent() {
+function uppdateraBar() {
+  const s = synligSida();
+  if (!s) return;
+  barTitel.textContent = s.dataset.kapitel || bok.titel;
+  barSida.textContent = s.dataset.nr ? `s. ${s.dataset.nr}` : '';
   const max = document.documentElement.scrollHeight - innerHeight;
-  return max > 0 ? Math.min(1, scrollY / max) : 0;
+  framsteg.style.width = (max > 0 ? Math.min(100, (scrollY / max) * 100) : 0).toFixed(1) + '%';
+  lasUppKnapp.hidden = !(tal && s.dataset.kapitel);
 }
 addEventListener('scroll', () => {
-  if (!aktuelltKapitel) return;
-  const p = pagaendeProcent();
-  framsteg.style.width = (p * 100).toFixed(1) + '%';
+  uppdateraBar();
   clearTimeout(sparaTimer);
-  sparaTimer = setTimeout(() => {
-    spara('senast', { kapitel: aktuelltKapitel, procent: p });
-    if (p > 0.97) spara('lasta', { ...lagrat('lasta', {}), [aktuelltKapitel]: true });
-  }, 250);
+  sparaTimer = setTimeout(() => spara('plats', platsNu()), 300);
 }, { passive: true });
 
 // ---------------------------------------------------------------- read aloud (Swedish voice)
 const tal = 'speechSynthesis' in window ? speechSynthesis : null;
 let laser = false;
-function svenskRost() {
-  const r = tal.getVoices();
-  return r.find((v) => v.lang === 'sv-SE') || r.find((v) => v.lang?.startsWith('sv'));
-}
 function stoppaLasning() {
   laser = false;
   tal?.cancel();
@@ -192,21 +285,23 @@ function stoppaLasning() {
   lasUppKnapp.setAttribute('aria-pressed', 'false');
   document.querySelectorAll('p.laser').forEach((p) => p.classList.remove('laser'));
 }
-function lasFran(p) {
-  if (!p || !laser) return stoppaLasning();
+const allaStycken = () => [...bokEl.querySelectorAll('.kropp p:not(.plats)')];
+function lasFran(i) {
+  const st = allaStycken();
+  if (!laser || i >= st.length) return stoppaLasning();
+  // A paragraph split over two pages is read as one.
+  const delar = [st[i]];
+  while (st[i + delar.length]?.classList.contains('fortsatt')) delar.push(st[i + delar.length]);
   document.querySelectorAll('p.laser').forEach((x) => x.classList.remove('laser'));
-  p.classList.add('laser');
-  p.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  const u = new SpeechSynthesisUtterance(p.textContent.replace(/^–\s*/, ''));
+  delar.forEach((p) => p.classList.add('laser'));
+  delar[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const u = new SpeechSynthesisUtterance(delar.map((p) => p.textContent).join(' ').replace(/^–\s*/, ''));
   u.lang = 'sv-SE';
-  const rost = svenskRost();
+  const r = tal.getVoices();
+  const rost = r.find((v) => v.lang === 'sv-SE') || r.find((v) => v.lang?.startsWith('sv'));
   if (rost) u.voice = rost;
   u.rate = 0.95;
-  u.onend = () => {
-    let n = p.nextElementSibling;
-    while (n && n.tagName !== 'P') n = n.nextElementSibling;
-    lasFran(n);
-  };
+  u.onend = () => lasFran(i + delar.length);
   tal.speak(u);
 }
 lasUppKnapp.onclick = () => {
@@ -214,31 +309,35 @@ lasUppKnapp.onclick = () => {
   laser = true;
   lasUppKnapp.textContent = '■';
   lasUppKnapp.setAttribute('aria-pressed', 'true');
-  // Start at the first paragraph on screen.
-  const stycken = [...document.querySelectorAll('.text p')];
-  lasFran(stycken.find((p) => p.getBoundingClientRect().bottom > 80) || stycken[0]);
+  const st = allaStycken();
+  const i = st.findIndex((p) => p.getBoundingClientRect().top > 70 && !p.classList.contains('fortsatt'));
+  lasFran(Math.max(0, i));
 };
 
-// ---------------------------------------------------------------- router
-function route() {
-  stoppaLasning();
-  const [vy, arg] = location.hash.slice(1).split('-');
-  aktuelltKapitel = vy === 'kapitel' ? Number(arg) : null;
-  lasUppKnapp.hidden = !(aktuelltKapitel && tal);
-  framsteg.style.width = '0';
-  const vyn = vy === 'kapitel' ? kapitel(Number(arg)) : vy === 'innehall' ? innehall() : vy === 'personer' ? personer() : omslag();
-  app.replaceChildren(vyn);
-  const s = senast();
-  if (aktuelltKapitel && s && s.kapitel === aktuelltKapitel && s.procent > 0.02) {
-    requestAnimationFrame(() => scrollTo(0, s.procent * (document.documentElement.scrollHeight - innerHeight)));
-  } else {
-    scrollTo(0, 0);
-  }
-  if (aktuelltKapitel) spara('senast', { kapitel: aktuelltKapitel, procent: s?.kapitel === aktuelltKapitel ? s.procent : 0 });
-  app.focus({ preventScroll: true });
-}
-addEventListener('hashchange', route);
-addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { ljuslada.hidden = true; panel.hidden = true; }
+// ---------------------------------------------------------------- start
+addEventListener('hashchange', () => gaTill(location.hash.slice(1)));
+addEventListener('keydown', (e) => { if (e.key === 'Escape') { ljuslada.hidden = true; panel.hidden = true; } });
+let bredd = document.documentElement.clientWidth;
+let flodTimer;
+addEventListener('resize', () => {
+  const b = document.documentElement.clientWidth;
+  if (b === bredd) return; // phones change height while scrolling; only a new width re-flows
+  bredd = b;
+  const plats = platsNu();
+  clearTimeout(flodTimer);
+  flodTimer = setTimeout(() => paginera(plats), 200);
 });
-route();
+
+// Load the book's faces before measuring pages; a face arriving later would change line breaks.
+const typsnitt = ['18px "EB Garamond"', 'italic 18px "EB Garamond"', '500 18px Cinzel', '700 18px Cinzel'];
+await Promise.race([
+  Promise.all(typsnitt.map((f) => document.fonts?.load(f).catch(() => null))),
+  new Promise((r) => setTimeout(r, 3000)),
+]);
+paginera();
+const fran = location.hash.slice(1);
+if (!(fran && gaTill(fran, false))) {
+  const sparad = lagrat('plats', null);
+  if (sparad && sparad !== 'start') gaTill(sparad, false);
+}
+uppdateraBar();

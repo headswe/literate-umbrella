@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>De sovande kungarnas värld</title>
 <meta name="description" content="En Warhammer 40 000-roman av Sebastian, med bilder.">
-<meta name="theme-color" content="#0d0f12">
+<meta name="theme-color" content="#0a0b0d">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="ikon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,7 +16,9 @@
 <body>
 <header class="bar" id="bar">
   <a class="bar-btn" id="hem" href="#start" aria-label="Till omslaget">⌂</a>
+  <a class="bar-btn" href="#innehall" aria-label="Innehåll">☰</a>
   <div class="bar-titel" id="bar-titel"></div>
+  <div class="bar-sida" id="bar-sida"></div>
   <button class="bar-btn" id="las-upp" aria-label="Läs upp" hidden>▶</button>
   <button class="bar-btn" id="installningar-knapp" aria-label="Textinställningar">Aa</button>
   <div class="framsteg" id="framsteg"></div>
@@ -36,7 +38,7 @@
   </div>
 </div>
 
-<main id="app" tabindex="-1"></main>
+<main id="bok" lang="sv" tabindex="-1"><p class="laddar">Boken öppnas …</p></main>
 
 <div class="ljuslada" id="ljuslada" hidden>
   <img alt="">
