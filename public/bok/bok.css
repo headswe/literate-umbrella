@@ -201,6 +201,40 @@ figure.illustration figcaption { font-style: italic; color: var(--dampad); text-
 .innehall-lista li.kommer { opacity: .45; }
 .innehall-lista li.kommer .sid { font-style: italic; }
 
+/* ---------- turning pages */
+body.bladdrar { overflow: hidden; overscroll-behavior: none; }
+#bok.bladdra {
+  position: fixed; left: 0; right: 0; bottom: 0; top: var(--topp, 52px);
+  justify-content: center; gap: 14px; overflow: hidden;
+  padding-block: 8px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.scen { position: relative; flex: none; width: var(--sw); height: var(--sh); perspective: 2400px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.uppslag .scen { width: calc(var(--sw) * 2); }
+.blad {
+  position: absolute; top: 0; left: 0; width: var(--sw); height: var(--sh);
+  transform-style: preserve-3d; transform-origin: left center; will-change: transform;
+}
+.uppslag .blad { left: var(--sw); }
+.blad > .sida { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.blad > .bak { transform: rotateY(180deg); }
+.blad > .fram::after { left: 0; right: auto; background: linear-gradient(to right, rgba(0, 0, 0, .14), transparent); }
+.blad > .bak::after { left: auto; right: 0; background: linear-gradient(to left, rgba(0, 0, 0, .14), transparent); }
+.sida.tom::after { display: none; }
+.skugga {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0;
+  background: linear-gradient(to right, rgba(0, 0, 0, .04), rgba(0, 0, 0, .6));
+}
+.bak > .skugga { background: linear-gradient(to left, rgba(0, 0, 0, .04), rgba(0, 0, 0, .6)); }
+.kontroller { display: flex; align-items: center; gap: 14px; width: min(100%, 520px); flex: none; }
+.kontroller input { flex: 1; min-width: 0; accent-color: var(--guld); }
+.vand-knapp {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--linje); background: var(--papper); color: var(--text);
+  font-size: 24px; line-height: 1; display: grid; place-items: center;
+}
+.vand-knapp:disabled { opacity: .35; cursor: default; }
+.vand-knapp:focus-visible { outline: 2px solid var(--guld); outline-offset: 2px; }
+
 /* ---------- lightbox */
 .ljuslada {
   position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .92);

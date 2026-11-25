@@ -28,12 +28,27 @@ function tillampaTema() {
 }
 tillampaTema();
 
+// 'bladdra': turn pages one at a time (a spread of two on wide screens); 'scrolla': pages under each other.
+let lage = lagrat('lage', 'bladdra');
+let uppslag = false;
+function markeraLage() {
+  panel.querySelectorAll('[data-lage]').forEach((b) => b.classList.toggle('vald', b.dataset.lage === lage));
+}
+markeraLage();
+
 document.getElementById('installningar-knapp').onclick = (e) => { e.stopPropagation(); panel.hidden = !panel.hidden; };
 document.addEventListener('click', (e) => { if (!panel.contains(e.target)) panel.hidden = true; });
 panel.onclick = (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.tema) { tema = b.dataset.tema; spara('tema', tema); tillampaTema(); }
+  if (b.dataset.lage && b.dataset.lage !== lage) {
+    const plats = platsNu();
+    lage = b.dataset.lage;
+    spara('lage', lage);
+    markeraLage();
+    paginera(plats);
+  }
   if (b.dataset.storlek) {
     storlek = Math.min(26, Math.max(13, storlek + Number(b.dataset.storlek)));
     spara('sidstorlek', storlek);
@@ -57,7 +72,7 @@ const bildSrc = (b) => `bilder/${b.id}.jpg`;
 
 function bild(b, attrs = {}) {
   const img = el('img', { src: bildSrc(b), alt: b.bildtext, decoding: 'async', ...attrs });
-  img.addEventListener('click', () => visa(b));
+  img.addEventListener('click', () => { if (!nyssDrog) visa(b); });
   return img;
 }
 function visa(b) {
@@ -76,12 +91,26 @@ let ankare = {};       // 'start', 'innehall', 'personer', 'kapitel-1' … → p
 let sidor = [];
 
 function sidmatt() {
-  const w = Math.min(document.documentElement.clientWidth - 32, 600);
+  const bredd = document.documentElement.clientWidth;
+  uppslag = false;
+  if (lage === 'scrolla') {
+    const w = Math.min(bredd - 32, 600);
+    return { w, h: Math.round(w * 1.5), marg: Math.round(w * 0.1) };
+  }
+  const topp = document.getElementById('bar').getBoundingClientRect().bottom;
+  bokEl.style.setProperty('--topp', topp + 'px');
+  const hojd = innerHeight - topp - 76; // room for the page controls under the book
+  uppslag = bredd >= 900 && bredd > innerHeight;
+  const w = Math.floor(Math.min(uppslag ? (bredd - 48) / 2 : bredd - 32, uppslag ? 560 : 600, hojd / 1.5));
   return { w, h: Math.round(w * 1.5), marg: Math.round(w * 0.1) };
 }
 
 function paginera(behall) {
   stoppaLasning();
+  bokEl.classList.remove('bladdra', 'uppslag');
+  document.body.classList.toggle('bladdrar', lage === 'bladdra');
+  blad = [];
+  vant = 0;
   const { w, h, marg } = sidmatt();
   bokEl.style.setProperty('--sw', w + 'px');
   bokEl.style.setProperty('--sh', h + 'px');
@@ -237,12 +266,155 @@ function paginera(behall) {
   }
   avsluta();
 
+  if (lage === 'bladdra') byggBlad();
   if (behall) gaTill(behall, false);
   uppdateraBar();
 }
 
+// ---------------------------------------------------------------- turning pages
+// The laid-out pages become leaves: a page on the front and the next page (or blank paper,
+// one page at a time on a phone) on the back. A leaf turns around its left edge.
+let blad = [];          // { el, fram, bak }
+let vant = 0;           // leaves turned so far
+let animerar = false;
+let nyssDrog = false;
+const lugn = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const scen = el('div', { class: 'scen' });
+const forraKnapp = el('button', { class: 'vand-knapp', 'aria-label': 'Förra sidan' }, '‹');
+const nastaKnapp = el('button', { class: 'vand-knapp', 'aria-label': 'Nästa sida' }, '›');
+const reglage = el('input', { type: 'range', id: 'reglage', min: '0', value: '0', step: '1', 'aria-label': 'Gå till sida' });
+const kontroller = el('div', { class: 'kontroller' }, forraKnapp, reglage, nastaKnapp);
+forraKnapp.onclick = () => vand(-1);
+nastaKnapp.onclick = () => vand(1);
+reglage.oninput = () => { vant = Number(reglage.value); placera(); efterVandning(); };
+
+const maxVant = () => (uppslag ? blad.length : blad.length - 1);
+const skuggaFor = (v) => Math.sin((Math.abs(v) * Math.PI) / 180) * 0.5;
+
+function byggBlad() {
+  bokEl.classList.add('bladdra');
+  bokEl.classList.toggle('uppslag', uppslag);
+  const par = [];
+  if (uppslag) for (let i = 0; i < sidor.length; i += 2) par.push([sidor[i], sidor[i + 1] || el('section', { class: 'sida tom' })]);
+  else for (const s of sidor) par.push([s, el('section', { class: 'sida tom' })]);
+  blad = par.map(([fram, bak]) => {
+    fram.classList.add('fram');
+    bak.classList.add('bak');
+    fram.append(el('div', { class: 'skugga' }));
+    bak.append(el('div', { class: 'skugga' }));
+    return { el: el('div', { class: 'blad' }, fram, bak), fram, bak };
+  });
+  scen.replaceChildren(...blad.map((b) => b.el));
+  bokEl.replaceChildren(scen, kontroller);
+  reglage.max = String(maxVant());
+  placera();
+}
+
+function placera() {
+  blad.forEach((b, j) => {
+    const vandt = j < vant;
+    // Only the leaves around the open page are drawn, so far-off pictures load later.
+    const nara = j >= vant - 2 && j <= vant + 1 && (uppslag || !vandt);
+    b.el.style.display = nara ? '' : 'none';
+    b.el.style.transform = `rotateY(${vandt ? -180 : 0}deg)`;
+    b.el.style.zIndex = vandt ? j + 1 : blad.length * 2 - j;
+    b.el.querySelectorAll(':scope > .sida > .skugga').forEach((s) => { s.style.opacity = 0; });
+  });
+  forraKnapp.disabled = vant <= 0;
+  nastaKnapp.disabled = vant >= maxVant();
+}
+
+function snurra(b, start, slut) {
+  animerar = true;
+  b.el.style.display = '';
+  b.el.style.zIndex = 9999;
+  const tid = lugn ? 1 : 90 + (650 * Math.abs(slut - start)) / 180;
+  const opt = { duration: tid, easing: 'cubic-bezier(.3,.1,.25,1)', fill: 'forwards' };
+  const a = b.el.animate([{ transform: `rotateY(${start}deg)` }, { transform: `rotateY(${slut}deg)` }], opt);
+  const steg = [start, (start + slut) / 2, slut].map((v) => ({ opacity: skuggaFor(v) }));
+  b.el.querySelectorAll(':scope > .sida > .skugga').forEach((s) => s.animate(steg, opt));
+  return a.finished.then(() => {
+    b.el.style.transform = `rotateY(${slut}deg)`;
+    b.el.getAnimations({ subtree: true }).forEach((x) => x.cancel());
+    animerar = false;
+  });
+}
+
+function vand(riktning, fran) {
+  if (animerar || !blad.length) return Promise.resolve();
+  const j = riktning > 0 ? vant : vant - 1;
+  if (j < 0 || (riktning > 0 && vant >= maxVant())) return Promise.resolve();
+  const start = fran ?? (riktning > 0 ? 0 : -180);
+  return snurra(blad[j], start, riktning > 0 ? -180 : 0).then(() => {
+    vant += riktning;
+    placera();
+    efterVandning();
+  });
+}
+
+function efterVandning() {
+  reglage.value = String(vant);
+  uppdateraBar();
+  spara('plats', platsNu());
+}
+
+const bladIndex = (sidEl) => blad.findIndex((b) => b.fram === sidEl || b.bak === sidEl);
+function oppnatVid(sidEl) {
+  const j = bladIndex(sidEl);
+  if (j < 0) return vant;
+  return Math.min(uppslag && blad[j].bak === sidEl ? j + 1 : j, maxVant());
+}
+function synligaSidor() {
+  return [uppslag ? blad[vant - 1]?.bak : null, blad[vant]?.fram].filter(Boolean);
+}
+
+// Drag a page with a finger or the mouse; a tap on the edge turns it.
+let drag = null;
+scen.addEventListener('pointerdown', (e) => {
+  if (animerar || e.button > 0) return;
+  drag = { x: e.clientX, id: e.pointerId, dir: 0, b: null, v: 0 };
+});
+scen.addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.x;
+  if (!drag.dir) {
+    if (Math.abs(dx) < 10) return;
+    drag.dir = dx < 0 ? 1 : -1;
+    const j = drag.dir > 0 ? vant : vant - 1;
+    if (j < 0 || (drag.dir > 0 && vant >= maxVant())) { drag = null; return; }
+    drag.b = blad[j];
+    drag.b.el.style.display = '';
+    drag.b.el.style.zIndex = 9999;
+    scen.setPointerCapture(e.pointerId);
+  }
+  const w = scen.clientWidth / (uppslag ? 2 : 1);
+  const v = Math.max(-180, Math.min(0, (drag.dir > 0 ? 0 : -180) + (dx / w) * 180));
+  drag.v = v;
+  drag.b.el.style.transform = `rotateY(${v}deg)`;
+  drag.b.el.querySelectorAll(':scope > .sida > .skugga').forEach((s) => { s.style.opacity = skuggaFor(v); });
+});
+function slappa(e, avbruten) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const d = drag;
+  drag = null;
+  if (!d.dir) {
+    if (avbruten || e.target.closest('a, img, button, input')) return;
+    const r = scen.getBoundingClientRect();
+    vand((e.clientX - r.left) / r.width < (uppslag ? 0.5 : 0.3) ? -1 : 1);
+    return;
+  }
+  nyssDrog = true;
+  setTimeout(() => { nyssDrog = false; }, 80);
+  const klar = !avbruten && (d.dir > 0 ? d.v < -60 : d.v > -120);
+  if (klar) vand(d.dir, d.v);
+  else snurra(d.b, d.v, d.dir > 0 ? 0 : -180).then(placera);
+}
+scen.addEventListener('pointerup', (e) => slappa(e, false));
+scen.addEventListener('pointercancel', (e) => slappa(e, true));
+
 // ---------------------------------------------------------------- where am I
 function synligSida() {
+  if (lage === 'bladdra') return synligaSidor().at(-1) || sidor[0];
   const linje = innerHeight * 0.35;
   return sidor.find((s) => s.getBoundingClientRect().bottom > linje) || sidor[0];
 }
@@ -255,6 +427,12 @@ function platsNu() {
 function gaTill(namn, mjukt = true) {
   const mal = ankare[namn] || bokEl.querySelector(`[data-b="${CSS.escape(namn)}"]`)?.closest('.sida');
   if (!mal) return false;
+  if (lage === 'bladdra') {
+    vant = oppnatVid(mal);
+    placera();
+    efterVandning();
+    return true;
+  }
   mal.scrollIntoView({ behavior: mjukt ? 'smooth' : 'instant', block: 'start' });
   return true;
 }
@@ -265,8 +443,9 @@ function uppdateraBar() {
   if (!s) return;
   barTitel.textContent = s.dataset.kapitel || bok.titel;
   barSida.textContent = s.dataset.nr ? `s. ${s.dataset.nr}` : '';
-  const max = document.documentElement.scrollHeight - innerHeight;
-  framsteg.style.width = (max > 0 ? Math.min(100, (scrollY / max) * 100) : 0).toFixed(1) + '%';
+  const max = lage === 'bladdra' ? maxVant() : document.documentElement.scrollHeight - innerHeight;
+  const nu = lage === 'bladdra' ? vant : scrollY;
+  framsteg.style.width = (max > 0 ? Math.min(100, (nu / max) * 100) : 0).toFixed(1) + '%';
   lasUppKnapp.hidden = !(tal && s.dataset.kapitel);
 }
 addEventListener('scroll', () => {
@@ -285,6 +464,12 @@ function stoppaLasning() {
   lasUppKnapp.setAttribute('aria-pressed', 'false');
   document.querySelectorAll('p.laser').forEach((p) => p.classList.remove('laser'));
 }
+function visaStycke(p) {
+  if (lage !== 'bladdra') return p.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const mal = oppnatVid(p.closest('.sida'));
+  if (mal === vant + 1) vand(1);
+  else if (mal !== vant) { vant = mal; placera(); efterVandning(); }
+}
 const allaStycken = () => [...bokEl.querySelectorAll('.kropp p:not(.plats)')];
 function lasFran(i) {
   const st = allaStycken();
@@ -294,7 +479,7 @@ function lasFran(i) {
   while (st[i + delar.length]?.classList.contains('fortsatt')) delar.push(st[i + delar.length]);
   document.querySelectorAll('p.laser').forEach((x) => x.classList.remove('laser'));
   delar.forEach((p) => p.classList.add('laser'));
-  delar[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+  visaStycke(delar[0]);
   const u = new SpeechSynthesisUtterance(delar.map((p) => p.textContent).join(' ').replace(/^–\s*/, ''));
   u.lang = 'sv-SE';
   const r = tal.getVoices();
@@ -310,19 +495,30 @@ lasUppKnapp.onclick = () => {
   lasUppKnapp.textContent = '■';
   lasUppKnapp.setAttribute('aria-pressed', 'true');
   const st = allaStycken();
-  const i = st.findIndex((p) => p.getBoundingClientRect().top > 70 && !p.classList.contains('fortsatt'));
+  const synliga = lage === 'bladdra' ? synligaSidor() : null;
+  const i = st.findIndex((p) => !p.classList.contains('fortsatt')
+    && (synliga ? synliga.includes(p.closest('.sida')) : p.getBoundingClientRect().top > 70));
   lasFran(Math.max(0, i));
 };
 
 // ---------------------------------------------------------------- start
 addEventListener('hashchange', () => gaTill(location.hash.slice(1)));
-addEventListener('keydown', (e) => { if (e.key === 'Escape') { ljuslada.hidden = true; panel.hidden = true; } });
+addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { ljuslada.hidden = true; panel.hidden = true; }
+  if (lage !== 'bladdra' || e.target.closest?.('input, button') || !ljuslada.hidden) return;
+  if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); vand(1); }
+  if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); vand(-1); }
+});
 let bredd = document.documentElement.clientWidth;
+let hojd = innerHeight;
 let flodTimer;
 addEventListener('resize', () => {
   const b = document.documentElement.clientWidth;
-  if (b === bredd) return; // phones change height while scrolling; only a new width re-flows
+  // Phones change height while scrolling, so in scroll mode only a new width re-flows.
+  const nyHojd = lage === 'bladdra' && Math.abs(innerHeight - hojd) > 60;
+  if (b === bredd && !nyHojd) return;
   bredd = b;
+  hojd = innerHeight;
   const plats = platsNu();
   clearTimeout(flodTimer);
   flodTimer = setTimeout(() => paginera(plats), 200);

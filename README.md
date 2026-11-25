@@ -7,7 +7,8 @@ mobil och dator, ensam eller tillsammans på samma wifi.
 ## Boken: De sovande kungarnas värld
 
 En läsapp för romanen ligger i `public/bok/` och publiceras på
-https://headswe.github.io/literate-umbrella/bok/ tillsammans med spelet. Omslag, innehåll,
+https://headswe.github.io/literate-umbrella/bok/ tillsammans med spelet. Man bläddrar som i en riktig bok (svep, tryck på kanten eller
+piltangenterna; uppslag med två sidor på dator) eller väljer att scrolla under Aa. Omslag, innehåll,
 personer med porträtt, kapitel med bilder, tre teman (natt, pergament, dag), textstorlek,
 uppläsning på svenska (▶) och appen minns var man slutade läsa.
 
